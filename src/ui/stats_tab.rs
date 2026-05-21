@@ -7,12 +7,20 @@ use ratatui::widgets::{Block, Borders, Paragraph, Sparkline};
 use crate::app::{App, ResourceSection};
 
 pub fn draw_stats_tab(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .title(Span::styled(" Stats ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
     if app.active_section != ResourceSection::Containers {
         let msg = Paragraph::new(Line::from(Span::styled(
             "  Stats are only available for containers.",
             Style::default().fg(Color::DarkGray),
         )));
-        f.render_widget(msg, area);
+        f.render_widget(msg, inner);
         return;
     }
 
@@ -21,7 +29,7 @@ pub fn draw_stats_tab(f: &mut Frame, app: &App, area: Rect) {
             "  No container selected.",
             Style::default().fg(Color::DarkGray),
         )));
-        f.render_widget(msg, area);
+        f.render_widget(msg, inner);
         return;
     };
 
@@ -30,23 +38,20 @@ pub fn draw_stats_tab(f: &mut Frame, app: &App, area: Rect) {
             "  Container is not running. Start it to see stats.",
             Style::default().fg(Color::DarkGray),
         )));
-        f.render_widget(msg, area);
+        f.render_widget(msg, inner);
         return;
     }
 
-    // Layout: current stats on top, sparkline graphs below
+    // Layout: current stats text + sparkline graphs side by side
     let layout = Layout::default()
-        .direction(Direction::Vertical)
+        .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(8), // current stats
-            Constraint::Min(4),   // graphs
+            Constraint::Length(32), // current stats text
+            Constraint::Min(10),   // graphs
         ])
-        .split(area);
+        .split(inner);
 
-    // Current stats text
     draw_current_stats(f, app, layout[0]);
-
-    // Sparkline graphs
     draw_sparkline_graphs(f, app, &c.id, layout[1]);
 }
 

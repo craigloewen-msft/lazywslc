@@ -1,18 +1,26 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::App;
 
 pub fn draw_logs_tab(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .title(Span::styled(" Logs ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
     if app.logs_text.is_empty() {
         let empty = Paragraph::new(Line::from(Span::styled(
-            "  No logs available. Select a container and press 'l' to load logs.",
+            "  No logs available.",
             Style::default().fg(Color::DarkGray),
         )));
-        f.render_widget(empty, area);
+        f.render_widget(empty, inner);
         return;
     }
 
@@ -22,12 +30,18 @@ pub fn draw_logs_tab(f: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let total = lines.len() as u16;
-    let visible = area.height;
+    let visible = inner.height;
     let max_scroll = total.saturating_sub(visible);
-    let scroll = app.logs_scroll.min(max_scroll);
+
+    // Auto-scroll to bottom unless user has manually scrolled up
+    let scroll = if app.logs_scroll == 0 {
+        max_scroll // default: show latest logs at bottom
+    } else {
+        app.logs_scroll.min(max_scroll)
+    };
 
     let paragraph = Paragraph::new(lines).scroll((scroll, 0));
-    f.render_widget(paragraph, area);
+    f.render_widget(paragraph, inner);
 }
 
 /// Strip ANSI escape sequences and control characters that corrupt TUI rendering.
