@@ -119,8 +119,9 @@ pub fn draw_image_panel(f: &mut Frame, app: &App, area: Rect) {
         if is_selected {
             let age = relative_time(img.created);
             let in_use = app.containers.iter()
-                .filter(|c| c.image == img.display_name()
-                    || img.repository.as_deref().map_or(false, |r| c.image.starts_with(r)))
+                .filter(|c| crate::ui::info_tab::image_matches(
+                    &c.image, &img.display_name(),
+                    img.repository.as_deref(), img.tag.as_deref()))
                 .count();
             let use_text = if in_use > 0 {
                 format!(" • ●{} container{}", in_use, if in_use == 1 { "" } else { "s" })

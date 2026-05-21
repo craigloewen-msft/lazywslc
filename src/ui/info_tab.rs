@@ -85,8 +85,7 @@ fn image_info(app: &App) -> Vec<Line<'static>> {
     // Show containers using this image
     let display = img.display_name();
     let dependent: Vec<&crate::wslc::types::Container> = app.containers.iter()
-        .filter(|c| c.image == display
-            || img.repository.as_deref().map_or(false, |r| c.image.starts_with(r)))
+        .filter(|c| image_matches(&c.image, &display, img.repository.as_deref(), img.tag.as_deref()))
         .collect();
 
     lines.push(Line::from(""));
@@ -163,4 +162,23 @@ fn format_timestamp(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
         .unwrap_or_else(|| ts.to_string())
+}
+
+/// Check if a container's image string matches a given image.
+/// Handles cases like container.image="ubuntu" matching image "ubuntu:latest",
+/// and exact matches like "ubuntu:22.04" == "ubuntu:22.04".
+pub fn image_matches(container_image: &str, display_name: &str, repo: Option<&str>, tag: Option<&str>) -> bool {
+    // Exact match on full display name (e.g. "ubuntu:22.04" == "ubuntu:22.04")
+    if container_image == display_name {
+        return true;
+    }
+    // Container image without tag (e.g. "ubuntu") matches "ubuntu:latest"
+    if !container_image.contains(':') {
+        if let Some(r) = repo {
+            if container_image == r && tag.unwrap_or("latest") == "latest" {
+                return true;
+            }
+        }
+    }
+    false
 }
