@@ -250,9 +250,9 @@ impl App {
         if idx > 0 {
             self.set_current_index(idx - 1);
         } else {
-            // At top of current section — move to previous section's last item
+            let prev_section = self.active_section;
             match self.active_section {
-                ResourceSection::Containers => {} // already at top
+                ResourceSection::Containers => {}
                 ResourceSection::Images => {
                     let prev_len = self.filtered_containers().len();
                     if prev_len > 0 {
@@ -268,6 +268,10 @@ impl App {
                     }
                 }
             }
+            if self.active_section != prev_section {
+                self.detail_tab = self.default_tab();
+                self.info_scroll = 0;
+            }
         }
     }
 
@@ -277,7 +281,7 @@ impl App {
         if len > 0 && idx < len - 1 {
             self.set_current_index(idx + 1);
         } else {
-            // At bottom of current section — move to next section's first item
+            let prev_section = self.active_section;
             match self.active_section {
                 ResourceSection::Containers => {
                     if !self.filtered_images().is_empty() {
@@ -291,7 +295,11 @@ impl App {
                         self.volume_index = 0;
                     }
                 }
-                ResourceSection::Volumes => {} // already at bottom
+                ResourceSection::Volumes => {}
+            }
+            if self.active_section != prev_section {
+                self.detail_tab = self.default_tab();
+                self.info_scroll = 0;
             }
         }
     }
