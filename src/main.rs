@@ -149,8 +149,20 @@ async fn handle_normal_key(
 
     match code {
         // Navigation
-        KeyCode::Up | KeyCode::Char('k') => app.move_up(),
-        KeyCode::Down | KeyCode::Char('j') => app.move_down(),
+        KeyCode::Up | KeyCode::Char('k') => {
+            let prev = app.active_section;
+            app.move_up();
+            if app.active_section != prev {
+                load_inspect_for_selected(app).await;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            let prev = app.active_section;
+            app.move_down();
+            if app.active_section != prev {
+                load_inspect_for_selected(app).await;
+            }
+        }
         KeyCode::Tab => {
             app.focus = match app.focus {
                 FocusPanel::ResourceList => FocusPanel::Detail,

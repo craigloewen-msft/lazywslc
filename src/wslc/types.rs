@@ -65,16 +65,16 @@ impl Container {
         match self.state {
             0 => "Created",
             1 => "Running",
-            2 => "Stopped",
-            3 => "Running",
+            2 => "Running",
+            3 => "Exited",
             4 => "Paused",
-            5 => "Exited",
+            5 => "Stopped",
             _ => "Unknown",
         }
     }
 
     pub fn is_running(&self) -> bool {
-        self.state == 1 || self.state == 3
+        self.state == 1 || self.state == 2
     }
 
     pub fn short_id(&self) -> &str {

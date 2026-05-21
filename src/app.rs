@@ -246,6 +246,25 @@ impl App {
         let idx = self.current_index();
         if idx > 0 {
             self.set_current_index(idx - 1);
+        } else {
+            // At top of current section — move to previous section's last item
+            match self.active_section {
+                ResourceSection::Containers => {} // already at top
+                ResourceSection::Images => {
+                    let prev_len = self.filtered_containers().len();
+                    if prev_len > 0 {
+                        self.active_section = ResourceSection::Containers;
+                        self.container_index = prev_len - 1;
+                    }
+                }
+                ResourceSection::Volumes => {
+                    let prev_len = self.filtered_images().len();
+                    if prev_len > 0 {
+                        self.active_section = ResourceSection::Images;
+                        self.image_index = prev_len - 1;
+                    }
+                }
+            }
         }
     }
 
@@ -254,6 +273,23 @@ impl App {
         let idx = self.current_index();
         if len > 0 && idx < len - 1 {
             self.set_current_index(idx + 1);
+        } else {
+            // At bottom of current section — move to next section's first item
+            match self.active_section {
+                ResourceSection::Containers => {
+                    if !self.filtered_images().is_empty() {
+                        self.active_section = ResourceSection::Images;
+                        self.image_index = 0;
+                    }
+                }
+                ResourceSection::Images => {
+                    if !self.filtered_volumes().is_empty() {
+                        self.active_section = ResourceSection::Volumes;
+                        self.volume_index = 0;
+                    }
+                }
+                ResourceSection::Volumes => {} // already at bottom
+            }
         }
     }
 
