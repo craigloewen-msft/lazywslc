@@ -670,9 +670,13 @@ fn handle_tab_click(app: &mut App, col: u16, areas: &ui::layout::LayoutAreas) {
     };
 
     let relative_x = (col - areas.tab_bar.x) as usize;
+    // Ratatui Tabs renders each tab as: " {title} " (1 char pad each side)
+    // with divider " │ " (3 chars) between them.
+    // So each tab region = 1 + title.len() + 1, then 3 for divider.
     let mut pos = 0;
     for (i, title) in tab_titles.iter().enumerate() {
-        let end = pos + title.len();
+        let tab_width = 1 + title.len() + 1; // padding + title + padding
+        let end = pos + tab_width;
         if relative_x >= pos && relative_x < end {
             let tab = match app.active_section {
                 ResourceSection::Containers => match i {
