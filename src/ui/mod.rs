@@ -1,0 +1,10 @@
+pub mod layout;
+pub mod resource_list;
+pub mod detail;
+pub mod info_tab;
+pub mod logs_tab;
+pub mod stats_tab;
+pub mod env_tab;
+pub mod action_menu;
+pub mod help;
+pub mod status_bar;
