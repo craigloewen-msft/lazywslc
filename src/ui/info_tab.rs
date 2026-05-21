@@ -13,7 +13,7 @@ pub fn draw_info_tab(f: &mut Frame, app: &App, area: Rect) {
         ResourceSection::Volumes => volume_info(app),
     };
 
-    let paragraph = Paragraph::new(lines).scroll((0, 0));
+    let paragraph = Paragraph::new(lines).scroll((app.info_scroll, 0));
     f.render_widget(paragraph, area);
 }
 

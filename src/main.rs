@@ -171,26 +171,31 @@ async fn handle_normal_key(
         // Section switching
         KeyCode::Char('1') => {
             app.active_section = ResourceSection::Containers;
-            app.detail_tab = DetailTab::Main;
+            app.detail_tab = app.default_tab();
+            app.info_scroll = 0;
             load_inspect_for_selected(app).await;
         }
         KeyCode::Char('2') => {
             app.active_section = ResourceSection::Images;
-            app.detail_tab = DetailTab::Main;
+            app.detail_tab = app.default_tab();
+            app.info_scroll = 0;
             load_inspect_for_selected(app).await;
         }
         KeyCode::Char('3') => {
             app.active_section = ResourceSection::Volumes;
-            app.detail_tab = DetailTab::Main;
+            app.detail_tab = app.default_tab();
+            app.info_scroll = 0;
             load_inspect_for_selected(app).await;
         }
 
         // Detail tab switching
         KeyCode::Right | KeyCode::Char('L') => {
             app.next_tab();
+            app.info_scroll = 0;
         }
         KeyCode::Left | KeyCode::Char('H') => {
             app.prev_tab();
+            app.info_scroll = 0;
         }
 
         // Collapse/expand
@@ -312,6 +317,14 @@ async fn handle_normal_key(
         }
         KeyCode::PageUp => {
             app.logs_scroll = app.logs_scroll.saturating_sub(10);
+        }
+
+        // Scroll info (f = forward, b = backward)
+        KeyCode::Char('f') => {
+            app.info_scroll = app.info_scroll.saturating_add(10);
+        }
+        KeyCode::Char('b') => {
+            app.info_scroll = app.info_scroll.saturating_sub(10);
         }
 
         _ => {}

@@ -88,6 +88,7 @@ pub struct App {
     pub stats_history: std::collections::HashMap<String, StatsHistory>,
     pub current_stats: Option<Stats>,
     pub logs_scroll: u16,
+    pub info_scroll: u16,
 
     // Input
     pub input_mode: InputMode,
@@ -145,6 +146,7 @@ impl App {
             stats_history: std::collections::HashMap::new(),
             current_stats: None,
             logs_scroll: 0,
+            info_scroll: 0,
             input_mode: InputMode::Normal,
             filter_text: String::new(),
             pull_input: String::new(),
@@ -300,7 +302,8 @@ impl App {
             ResourceSection::Images => ResourceSection::Volumes,
             ResourceSection::Volumes => ResourceSection::Containers,
         };
-        self.detail_tab = DetailTab::Main;
+        self.detail_tab = self.default_tab();
+        self.info_scroll = 0;
     }
 
     pub fn prev_section(&mut self) {
@@ -309,22 +312,45 @@ impl App {
             ResourceSection::Images => ResourceSection::Containers,
             ResourceSection::Volumes => ResourceSection::Images,
         };
-        self.detail_tab = DetailTab::Main;
+        self.detail_tab = self.default_tab();
+        self.info_scroll = 0;
+    }
+
+    /// Default detail tab for the active section
+    pub fn default_tab(&self) -> DetailTab {
+        match self.active_section {
+            ResourceSection::Containers => DetailTab::Main,
+            ResourceSection::Images | ResourceSection::Volumes => DetailTab::Info,
+        }
     }
 
     pub fn next_tab(&mut self) {
-        self.detail_tab = match self.detail_tab {
-            DetailTab::Main => DetailTab::Info,
-            DetailTab::Info => DetailTab::Env,
-            DetailTab::Env => DetailTab::Main,
+        self.detail_tab = match self.active_section {
+            ResourceSection::Volumes => DetailTab::Info, // only Info
+            ResourceSection::Images => match self.detail_tab {
+                DetailTab::Info => DetailTab::Env,
+                _ => DetailTab::Info,
+            },
+            ResourceSection::Containers => match self.detail_tab {
+                DetailTab::Main => DetailTab::Info,
+                DetailTab::Info => DetailTab::Env,
+                DetailTab::Env => DetailTab::Main,
+            },
         };
     }
 
     pub fn prev_tab(&mut self) {
-        self.detail_tab = match self.detail_tab {
-            DetailTab::Main => DetailTab::Env,
-            DetailTab::Info => DetailTab::Main,
-            DetailTab::Env => DetailTab::Info,
+        self.detail_tab = match self.active_section {
+            ResourceSection::Volumes => DetailTab::Info,
+            ResourceSection::Images => match self.detail_tab {
+                DetailTab::Env => DetailTab::Info,
+                _ => DetailTab::Env,
+            },
+            ResourceSection::Containers => match self.detail_tab {
+                DetailTab::Main => DetailTab::Env,
+                DetailTab::Info => DetailTab::Main,
+                DetailTab::Env => DetailTab::Info,
+            },
         };
     }
 

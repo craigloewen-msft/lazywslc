@@ -31,11 +31,29 @@ pub fn draw_detail(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(inner);
 
-    let tab_titles = vec!["Main", "Info", "Env"];
-    let selected = match app.detail_tab {
-        DetailTab::Main => 0,
-        DetailTab::Info => 1,
-        DetailTab::Env => 2,
+    // Build tab titles and selected index based on section
+    let (tab_titles, selected): (Vec<&str>, usize) = match app.active_section {
+        ResourceSection::Containers => {
+            let titles = vec!["Main", "Info", "Env"];
+            let sel = match app.detail_tab {
+                DetailTab::Main => 0,
+                DetailTab::Info => 1,
+                DetailTab::Env => 2,
+            };
+            (titles, sel)
+        }
+        ResourceSection::Images => {
+            let titles = vec!["Info", "Env"];
+            let sel = match app.detail_tab {
+                DetailTab::Env => 1,
+                _ => 0,
+            };
+            (titles, sel)
+        }
+        ResourceSection::Volumes => {
+            let titles = vec!["Info"];
+            (titles, 0)
+        }
     };
 
     let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
