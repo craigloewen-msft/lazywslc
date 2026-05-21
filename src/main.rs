@@ -17,8 +17,10 @@ use ratatui::Terminal;
 use app::{App, ConfirmAction, DetailTab, FocusPanel, InputMode, ResourceSection};
 use event::{AppEvent, poll_event, is_quit};
 
-const TICK_RATE: Duration = Duration::from_millis(500);
-const STATS_INTERVAL: u8 = 4; // every 4 ticks = ~2 seconds
+const TICK_RATE: Duration = Duration::from_millis(250);
+const STATS_INTERVAL: u8 = 8;   // every 8 ticks × 250ms = ~2 seconds
+const REFRESH_INTERVAL: u8 = 4; // every 4 ticks × 250ms = ~1 second
+const SPLASH_DURATION: u16 = 20; // 20 ticks × 250ms = 5 seconds
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -52,6 +54,7 @@ async fn run_app(
     refresh_data(app).await;
 
     let mut tick_counter: u8 = 0;
+    let mut refresh_counter: u8 = 0;
     let mut show_help = false;
 
     loop {
@@ -93,6 +96,21 @@ async fn run_app(
             AppEvent::Tick => {
                 app.tick_flash();
                 tick_counter += 1;
+                refresh_counter += 1;
+
+                // Splash timeout
+                if app.show_splash {
+                    app.splash_ticks += 1;
+                    if app.splash_ticks >= SPLASH_DURATION {
+                        app.show_splash = false;
+                    }
+                }
+
+                // Auto-refresh data every ~1 second
+                if refresh_counter >= REFRESH_INTERVAL {
+                    refresh_counter = 0;
+                    refresh_data(app).await;
+                }
 
                 // Periodic stats refresh for running containers
                 if tick_counter >= STATS_INTERVAL {

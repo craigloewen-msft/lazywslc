@@ -107,6 +107,10 @@ pub struct App {
     pub flash_message: Option<String>,
     pub flash_timer: u8,
 
+    // Splash header
+    pub show_splash: bool,
+    pub splash_ticks: u16,
+
     // Loading
     pub loading: bool,
 }
@@ -149,6 +153,8 @@ impl App {
             confirm_action: None,
             flash_message: None,
             flash_timer: 0,
+            show_splash: true,
+            splash_ticks: 0,
             loading: false,
         }
     }

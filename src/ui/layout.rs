@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Clear};
 
 use crate::app::{App, InputMode};
-use super::resource_list::draw_resource_list;
+use super::resource_list::{draw_container_panel, draw_image_panel, draw_volume_panel};
 use super::detail::draw_detail;
 use super::status_bar::draw_status_bar;
 use super::action_menu::draw_action_menu;
@@ -13,33 +13,54 @@ use super::action_menu::draw_action_menu;
 pub fn draw(f: &mut Frame, app: &App) {
     let size = f.area();
 
-    // Main vertical layout: title(1) + body + status(2)
+    // Main vertical layout: optional splash + body + status
+    let mut constraints = Vec::new();
+    if app.show_splash {
+        constraints.push(Constraint::Length(3)); // splash header
+    }
+    constraints.push(Constraint::Min(10)); // body
+    constraints.push(Constraint::Length(3)); // status bar
+
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),  // title
-            Constraint::Min(10),   // body
-            Constraint::Length(3), // status bar
-        ])
+        .constraints(constraints)
         .split(size);
 
-    // Title bar
-    draw_title(f, outer[0]);
+    let (body_area, status_area) = if app.show_splash {
+        draw_title(f, outer[0]);
+        (outer[1], outer[2])
+    } else {
+        (outer[0], outer[1])
+    };
 
-    // Body: left panel (30%) | right panel (70%)
+    // Body: left column (28%) | right panel (72%)
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(28),
             Constraint::Percentage(72),
         ])
-        .split(outer[1]);
+        .split(body_area);
 
-    draw_resource_list(f, app, body[0]);
+    // Left column: three separate bordered panels stacked vertically
+    let left_panels = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Ratio(2, 5), // Containers
+            Constraint::Ratio(2, 5), // Images
+            Constraint::Ratio(1, 5), // Volumes
+        ])
+        .split(body[0]);
+
+    draw_container_panel(f, app, left_panels[0]);
+    draw_image_panel(f, app, left_panels[1]);
+    draw_volume_panel(f, app, left_panels[2]);
+
+    // Right panel: detail view
     draw_detail(f, app, body[1]);
 
     // Status bar
-    draw_status_bar(f, app, outer[2]);
+    draw_status_bar(f, app, status_area);
 
     // Flash message overlay
     if let Some(ref msg) = app.flash_message {
@@ -69,7 +90,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         draw_pull_input(f, app, size);
     }
 
-    // Help overlay
+    // Filter overlay
     if app.input_mode == InputMode::Filter {
         draw_filter_input(f, app, size);
     }

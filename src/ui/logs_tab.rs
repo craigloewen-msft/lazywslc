@@ -16,8 +16,7 @@ pub fn draw_logs_tab(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let lines: Vec<Line> = app
-        .logs_text
+    let lines: Vec<Line> = sanitize_output(&app.logs_text)
         .lines()
         .map(|l| Line::from(Span::raw(format!("  {}", l))))
         .collect();
@@ -29,4 +28,58 @@ pub fn draw_logs_tab(f: &mut Frame, app: &App, area: Rect) {
 
     let paragraph = Paragraph::new(lines).scroll((scroll, 0));
     f.render_widget(paragraph, area);
+}
+
+/// Strip ANSI escape sequences and control characters that corrupt TUI rendering.
+pub fn sanitize_output(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            // Strip ANSI escape sequences: ESC [ ... final_byte
+            '\x1b' => {
+                if chars.peek() == Some(&'[') {
+                    chars.next(); // consume '['
+                    // consume until we hit a letter (the final byte of the sequence)
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next.is_ascii_alphabetic() || next == '~' {
+                            break;
+                        }
+                    }
+                } else if chars.peek() == Some(&']') {
+                    // OSC sequence: ESC ] ... ST (or BEL)
+                    chars.next();
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next == '\x07' || next == '\\' {
+                            break;
+                        }
+                    }
+                }
+                // else ignore lone ESC
+            }
+            // Carriage return: take only the last segment (mimics terminal \r overwrite)
+            '\r' => {
+                // Find the last \r-separated segment on this line by discarding what came before
+                if chars.peek() != Some(&'\n') {
+                    // Find end of the current content up to the last \r or \n
+                    let rest_of_line: String = chars.by_ref().take_while(|&ch| ch != '\n' && ch != '\r').collect();
+                    // Pop back to the start of the current line in result
+                    while result.ends_with(|c: char| c != '\n') {
+                        result.pop();
+                    }
+                    result.push_str(&rest_of_line);
+                }
+                // \r\n is just a newline
+            }
+            '\n' => result.push('\n'),
+            // Strip other control characters except tab
+            c if c.is_control() && c != '\t' => {}
+            c => result.push(c),
+        }
+    }
+
+    result
 }
