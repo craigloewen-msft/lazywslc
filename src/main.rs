@@ -14,7 +14,7 @@ use crossterm::{
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
-use app::{App, ConfirmAction, DetailTab, FocusPanel, InputMode, ResourceSection};
+use app::{App, ConfirmAction, DetailTab, InputMode, ResourceSection};
 use event::{AppEvent, poll_event, is_quit};
 
 const TICK_RATE: Duration = Duration::from_millis(250);
@@ -164,10 +164,8 @@ async fn handle_normal_key(
             }
         }
         KeyCode::Tab => {
-            app.focus = match app.focus {
-                FocusPanel::ResourceList => FocusPanel::Detail,
-                FocusPanel::Detail => FocusPanel::ResourceList,
-            };
+            app.next_section();
+            load_inspect_for_selected(app).await;
         }
 
         // Section switching
@@ -267,9 +265,29 @@ async fn handle_normal_key(
             prompt_remove(app);
         }
         KeyCode::Char('p') => {
-            if app.active_section == ResourceSection::Images {
-                app.pull_input.clear();
-                app.input_mode = InputMode::PullInput;
+            match app.active_section {
+                ResourceSection::Containers => {
+                    let stopped_count = app.containers.iter().filter(|c| !c.is_running()).count();
+                    if stopped_count == 0 {
+                        app.set_flash("No stopped containers to prune".into());
+                    } else {
+                        app.confirm_message = format!(
+                            "Prune {} stopped container{}? This cannot be undone.",
+                            stopped_count,
+                            if stopped_count == 1 { "" } else { "s" }
+                        );
+                        app.confirm_action = Some(ConfirmAction::PruneContainers);
+                        app.input_mode = InputMode::Confirm;
+                    }
+                }
+                ResourceSection::Images => {
+                    app.confirm_message = "Prune all dangling images? This cannot be undone.".into();
+                    app.confirm_action = Some(ConfirmAction::PruneImages);
+                    app.input_mode = InputMode::Confirm;
+                }
+                ResourceSection::Volumes => {
+                    app.set_flash("Prune not available for volumes".into());
+                }
             }
         }
         KeyCode::Char('l') => {
@@ -328,18 +346,31 @@ async fn handle_confirm_key(app: &mut App, code: KeyCode) {
                 app.loading = true;
                 let result = match action {
                     ConfirmAction::RemoveContainer(id) => {
-                        wslc::commands::remove_container(&id).await.map(|_| "Container removed")
+                        wslc::commands::remove_container(&id).await.map(|_| "Container removed".to_string())
                     }
                     ConfirmAction::RemoveImage(id) => {
-                        wslc::commands::remove_image(&id).await.map(|_| "Image removed")
+                        wslc::commands::remove_image(&id).await.map(|_| "Image removed".to_string())
                     }
                     ConfirmAction::RemoveVolume(name) => {
-                        wslc::commands::remove_volume(&name).await.map(|_| "Volume removed")
+                        wslc::commands::remove_volume(&name).await.map(|_| "Volume removed".to_string())
+                    }
+                    ConfirmAction::PruneContainers => {
+                        let stopped_ids: Vec<String> = app.containers
+                            .iter()
+                            .filter(|c| !c.is_running())
+                            .map(|c| c.id.clone())
+                            .collect();
+                        wslc::commands::prune_containers(&stopped_ids).await
+                            .map(|n| format!("Pruned {} container{}", n, if n == 1 { "" } else { "s" }))
+                    }
+                    ConfirmAction::PruneImages => {
+                        wslc::commands::prune_images().await
+                            .map(|_| "Dangling images pruned".to_string())
                     }
                 };
                 match result {
                     Ok(msg) => {
-                        app.set_flash(msg.into());
+                        app.set_flash(msg);
                         refresh_data(app).await;
                     }
                     Err(e) => app.set_flash(format!("Error: {}", e)),
@@ -443,6 +474,33 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char) {
             load_logs_for_selected(app).await;
         }
         'p' => {
+            // Prune from action menu — delegate to same logic as the 'p' normal key
+            match app.active_section {
+                ResourceSection::Containers => {
+                    let stopped_count = app.containers.iter().filter(|c| !c.is_running()).count();
+                    if stopped_count == 0 {
+                        app.set_flash("No stopped containers to prune".into());
+                    } else {
+                        app.confirm_message = format!(
+                            "Prune {} stopped container{}? This cannot be undone.",
+                            stopped_count,
+                            if stopped_count == 1 { "" } else { "s" }
+                        );
+                        app.confirm_action = Some(ConfirmAction::PruneContainers);
+                        app.input_mode = InputMode::Confirm;
+                    }
+                }
+                ResourceSection::Images => {
+                    app.confirm_message = "Prune all dangling images? This cannot be undone.".into();
+                    app.confirm_action = Some(ConfirmAction::PruneImages);
+                    app.input_mode = InputMode::Confirm;
+                }
+                ResourceSection::Volumes => {
+                    app.set_flash("Prune not available for volumes".into());
+                }
+            }
+        }
+        'P' => {
             app.pull_input.clear();
             app.input_mode = InputMode::PullInput;
         }

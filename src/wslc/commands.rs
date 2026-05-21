@@ -72,3 +72,18 @@ pub async fn remove_volume(name: &str) -> Result<String> {
 pub async fn pull_image(name: &str) -> Result<String> {
     run_wslc(&["pull", name]).await
 }
+
+pub async fn prune_images() -> Result<String> {
+    run_wslc(&["image", "prune"]).await
+}
+
+/// Remove all stopped containers. Returns count of removed containers.
+pub async fn prune_containers(stopped_ids: &[String]) -> Result<usize> {
+    let mut removed = 0;
+    for id in stopped_ids {
+        if remove_container(id).await.is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}

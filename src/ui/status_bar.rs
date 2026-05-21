@@ -66,28 +66,33 @@ fn normal_hints(app: &App) -> Vec<(&'static str, &'static str)> {
     let mut h = vec![
         ("q", "quit"),
         ("↑↓", "nav"),
-        ("Tab", "panel"),
+        ("Tab", "section"),
         ("Space", "actions"),
         ("?", "help"),
         ("/", "filter"),
         ("R", "refresh"),
     ];
 
-    if app.active_section == ResourceSection::Containers {
-        if let Some(c) = app.selected_container() {
-            if c.is_running() {
-                h.push(("S", "stop"));
-                h.push(("K", "kill"));
-            } else {
-                h.push(("s", "start"));
+    match app.active_section {
+        ResourceSection::Containers => {
+            if let Some(c) = app.selected_container() {
+                if c.is_running() {
+                    h.push(("S", "stop"));
+                    h.push(("K", "kill"));
+                } else {
+                    h.push(("s", "start"));
+                }
             }
+            h.push(("x", "remove"));
+            h.push(("p", "prune"));
         }
-        h.push(("x", "remove"));
-    } else if app.active_section == ResourceSection::Images {
-        h.push(("p", "pull"));
-        h.push(("x", "remove"));
-    } else {
-        h.push(("x", "remove"));
+        ResourceSection::Images => {
+            h.push(("x", "remove"));
+            h.push(("p", "prune"));
+        }
+        ResourceSection::Volumes => {
+            h.push(("x", "remove"));
+        }
     }
 
     h

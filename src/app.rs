@@ -119,6 +119,8 @@ pub enum ConfirmAction {
     RemoveContainer(String),
     RemoveImage(String),
     RemoveVolume(String),
+    PruneContainers,
+    PruneImages,
 }
 
 impl App {
@@ -379,9 +381,11 @@ impl App {
                     self.action_menu_items.push(ActionMenuItem { label: "Remove".into(), hotkey: 'x' });
                     self.action_menu_items.push(ActionMenuItem { label: "View Logs".into(), hotkey: 'l' });
                 }
+                self.action_menu_items.push(ActionMenuItem { label: "Prune Stopped".into(), hotkey: 'p' });
             }
             ResourceSection::Images => {
-                self.action_menu_items.push(ActionMenuItem { label: "Pull Image".into(), hotkey: 'p' });
+                self.action_menu_items.push(ActionMenuItem { label: "Pull Image".into(), hotkey: 'P' });
+                self.action_menu_items.push(ActionMenuItem { label: "Prune Dangling".into(), hotkey: 'p' });
                 if self.selected_image().is_some() {
                     self.action_menu_items.push(ActionMenuItem { label: "Remove".into(), hotkey: 'x' });
                 }
