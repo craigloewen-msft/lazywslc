@@ -1,8 +1,9 @@
-use crossterm::event::{self, Event, KeyEvent, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyEvent, KeyCode, KeyModifiers, MouseEvent};
 use std::time::Duration;
 
 pub enum AppEvent {
     Key(KeyEvent),
+    Mouse(MouseEvent),
     Tick,
     Resize(u16, u16),
 }
@@ -16,6 +17,7 @@ pub fn poll_event(tick_rate: Duration) -> anyhow::Result<AppEvent> {
                     return Ok(AppEvent::Key(key));
                 }
             }
+            Event::Mouse(mouse) => return Ok(AppEvent::Mouse(mouse)),
             Event::Resize(w, h) => return Ok(AppEvent::Resize(w, h)),
             _ => {}
         }

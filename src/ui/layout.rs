@@ -10,6 +10,68 @@ use super::detail::draw_detail;
 use super::status_bar::draw_status_bar;
 use super::action_menu::draw_action_menu;
 
+/// Precomputed layout areas for mouse hit-testing
+pub struct LayoutAreas {
+    pub container_inner: Rect,
+    pub image_inner: Rect,
+    pub volume_inner: Rect,
+    pub detail_area: Rect,
+    pub tab_bar: Rect,
+}
+
+/// Compute layout areas without rendering (for mouse hit-testing)
+pub fn compute_areas(app: &App, size: Rect) -> LayoutAreas {
+    let mut constraints = Vec::new();
+    if app.show_splash {
+        constraints.push(Constraint::Length(3));
+    }
+    constraints.push(Constraint::Min(10));
+    constraints.push(Constraint::Length(3));
+
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(size);
+
+    let body_area = if app.show_splash { outer[1] } else { outer[0] };
+
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(28),
+            Constraint::Percentage(72),
+        ])
+        .split(body_area);
+
+    let left_panels = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Ratio(2, 5),
+            Constraint::Ratio(2, 5),
+            Constraint::Ratio(1, 5),
+        ])
+        .split(body[0]);
+
+    let border_block = Block::default().borders(Borders::ALL);
+    let container_inner = border_block.inner(left_panels[0]);
+    let image_inner = border_block.inner(left_panels[1]);
+    let volume_inner = border_block.inner(left_panels[2]);
+
+    let detail_inner = border_block.inner(body[1]);
+    let detail_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(1)])
+        .split(detail_inner);
+
+    LayoutAreas {
+        container_inner,
+        image_inner,
+        volume_inner,
+        detail_area: body[1],
+        tab_bar: detail_layout[0],
+    }
+}
+
 pub fn draw(f: &mut Frame, app: &App) {
     let size = f.area();
 

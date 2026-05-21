@@ -7,7 +7,7 @@ use std::io;
 use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
-    event::{KeyCode, KeyModifiers},
+    event::{KeyCode, KeyModifiers, MouseEventKind, MouseButton, EnableMouseCapture, DisableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
 
     if let Err(e) = result {
@@ -91,6 +91,12 @@ async fn run_app(
                     InputMode::PullInput => {
                         handle_pull_input_key(app, key.code).await;
                     }
+                }
+            }
+            AppEvent::Mouse(mouse) => {
+                if app.input_mode == InputMode::Normal && !show_help {
+                    let size = terminal.get_frame().area();
+                    handle_mouse(app, mouse.kind, mouse.column, mouse.row, size).await;
                 }
             }
             AppEvent::Tick => {
@@ -549,6 +555,123 @@ async fn handle_pull_input_key(app: &mut App, code: KeyCode) {
             app.pull_input.pop();
         }
         _ => {}
+    }
+}
+
+async fn handle_mouse(
+    app: &mut App,
+    kind: MouseEventKind,
+    col: u16,
+    row: u16,
+    size: ratatui::layout::Rect,
+) {
+    let areas = ui::layout::compute_areas(app, size);
+
+    match kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            // Click in container panel
+            if rect_contains(&areas.container_inner, col, row) {
+                let idx = (row - areas.container_inner.y) as usize;
+                if idx < app.filtered_containers().len() {
+                    app.active_section = ResourceSection::Containers;
+                    app.container_index = idx;
+                    app.detail_tab = app.default_tab();
+                    app.info_scroll = 0;
+                    load_inspect_for_selected(app).await;
+                }
+            }
+            // Click in image panel
+            else if rect_contains(&areas.image_inner, col, row) {
+                let idx = (row - areas.image_inner.y) as usize;
+                if idx < app.filtered_images().len() {
+                    app.active_section = ResourceSection::Images;
+                    app.image_index = idx;
+                    app.detail_tab = app.default_tab();
+                    app.info_scroll = 0;
+                    load_inspect_for_selected(app).await;
+                }
+            }
+            // Click in volume panel
+            else if rect_contains(&areas.volume_inner, col, row) {
+                let idx = (row - areas.volume_inner.y) as usize;
+                if idx < app.filtered_volumes().len() {
+                    app.active_section = ResourceSection::Volumes;
+                    app.volume_index = idx;
+                    app.detail_tab = app.default_tab();
+                    app.info_scroll = 0;
+                    load_inspect_for_selected(app).await;
+                }
+            }
+            // Click on detail tab bar
+            else if rect_contains(&areas.tab_bar, col, row) {
+                handle_tab_click(app, col, &areas);
+            }
+        }
+        MouseEventKind::ScrollUp => {
+            if rect_contains(&areas.container_inner, col, row)
+                || rect_contains(&areas.image_inner, col, row)
+                || rect_contains(&areas.volume_inner, col, row)
+            {
+                app.move_up();
+            } else if rect_contains(&areas.detail_area, col, row) {
+                match app.detail_tab {
+                    DetailTab::Main => app.logs_scroll = app.logs_scroll.saturating_sub(3),
+                    DetailTab::Info => app.info_scroll = app.info_scroll.saturating_sub(3),
+                    _ => {}
+                }
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if rect_contains(&areas.container_inner, col, row)
+                || rect_contains(&areas.image_inner, col, row)
+                || rect_contains(&areas.volume_inner, col, row)
+            {
+                app.move_down();
+            } else if rect_contains(&areas.detail_area, col, row) {
+                match app.detail_tab {
+                    DetailTab::Main => app.logs_scroll = app.logs_scroll.saturating_add(3),
+                    DetailTab::Info => app.info_scroll = app.info_scroll.saturating_add(3),
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn rect_contains(rect: &ratatui::layout::Rect, col: u16, row: u16) -> bool {
+    col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height
+}
+
+fn handle_tab_click(app: &mut App, col: u16, areas: &ui::layout::LayoutAreas) {
+    let tab_titles: Vec<&str> = match app.active_section {
+        ResourceSection::Containers => vec!["Main", "Info", "Env"],
+        ResourceSection::Images => vec!["Info", "Env"],
+        ResourceSection::Volumes => vec!["Info"],
+    };
+
+    let relative_x = (col - areas.tab_bar.x) as usize;
+    let mut pos = 0;
+    for (i, title) in tab_titles.iter().enumerate() {
+        let end = pos + title.len();
+        if relative_x >= pos && relative_x < end {
+            let tab = match app.active_section {
+                ResourceSection::Containers => match i {
+                    0 => DetailTab::Main,
+                    1 => DetailTab::Info,
+                    _ => DetailTab::Env,
+                },
+                ResourceSection::Images => match i {
+                    0 => DetailTab::Info,
+                    _ => DetailTab::Env,
+                },
+                ResourceSection::Volumes => DetailTab::Info,
+            };
+            app.detail_tab = tab;
+            app.info_scroll = 0;
+            return;
+        }
+        pos = end + 3; // " │ " divider
     }
 }
 
