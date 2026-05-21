@@ -571,8 +571,10 @@ async fn handle_mouse(
         MouseEventKind::Down(MouseButton::Left) => {
             // Click in container panel
             if rect_contains(&areas.container_inner, col, row) {
-                let idx = (row - areas.container_inner.y) as usize;
-                if idx < app.filtered_containers().len() {
+                let rel_row = (row - areas.container_inner.y) as usize;
+                let len = app.filtered_containers().len();
+                let sel = if app.active_section == ResourceSection::Containers { app.container_index } else { usize::MAX };
+                if let Some(idx) = row_to_item_index(rel_row, sel, len) {
                     app.active_section = ResourceSection::Containers;
                     app.container_index = idx;
                     app.detail_tab = app.default_tab();
@@ -582,8 +584,10 @@ async fn handle_mouse(
             }
             // Click in image panel
             else if rect_contains(&areas.image_inner, col, row) {
-                let idx = (row - areas.image_inner.y) as usize;
-                if idx < app.filtered_images().len() {
+                let rel_row = (row - areas.image_inner.y) as usize;
+                let len = app.filtered_images().len();
+                let sel = if app.active_section == ResourceSection::Images { app.image_index } else { usize::MAX };
+                if let Some(idx) = row_to_item_index(rel_row, sel, len) {
                     app.active_section = ResourceSection::Images;
                     app.image_index = idx;
                     app.detail_tab = app.default_tab();
@@ -591,7 +595,7 @@ async fn handle_mouse(
                     load_inspect_for_selected(app).await;
                 }
             }
-            // Click in volume panel
+            // Click in volume panel (volumes are still 1 row each)
             else if rect_contains(&areas.volume_inner, col, row) {
                 let idx = (row - areas.volume_inner.y) as usize;
                 if idx < app.filtered_volumes().len() {
@@ -641,6 +645,21 @@ async fn handle_mouse(
 
 fn rect_contains(rect: &ratatui::layout::Rect, col: u16, row: u16) -> bool {
     col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height
+}
+
+/// Map a click row to an item index, accounting for the selected item taking 2 rows.
+/// Items before the selected index occupy 1 row each, the selected item occupies 2,
+/// and items after continue at 1 row each.
+fn row_to_item_index(rel_row: usize, selected: usize, count: usize) -> Option<usize> {
+    let mut row_acc = 0;
+    for i in 0..count {
+        let height = if i == selected { 2 } else { 1 };
+        if rel_row >= row_acc && rel_row < row_acc + height {
+            return Some(i);
+        }
+        row_acc += height;
+    }
+    None
 }
 
 fn handle_tab_click(app: &mut App, col: u16, areas: &ui::layout::LayoutAreas) {

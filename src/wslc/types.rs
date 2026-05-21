@@ -113,3 +113,34 @@ impl Image {
         }
     }
 }
+
+/// Convert a unix timestamp to a compact relative time string (e.g. "2h", "3d", "1w")
+pub fn relative_time(ts: i64) -> String {
+    let now = chrono::Utc::now().timestamp();
+    let diff = now - ts;
+    if diff < 0 {
+        return "now".into();
+    }
+    let secs = diff as u64;
+    const MIN: u64 = 60;
+    const HOUR: u64 = 3600;
+    const DAY: u64 = 86400;
+    const WEEK: u64 = 7 * DAY;
+    const MONTH: u64 = 30 * DAY;
+    const YEAR: u64 = 365 * DAY;
+    if secs < MIN {
+        format!("{}s", secs)
+    } else if secs < HOUR {
+        format!("{}m", secs / MIN)
+    } else if secs < DAY {
+        format!("{}h", secs / HOUR)
+    } else if secs < WEEK {
+        format!("{}d", secs / DAY)
+    } else if secs < MONTH {
+        format!("{}w", secs / WEEK)
+    } else if secs < YEAR {
+        format!("{}mo", secs / MONTH)
+    } else {
+        format!("{}y", secs / YEAR)
+    }
+}
