@@ -82,6 +82,40 @@ fn image_info(app: &App) -> Vec<Line<'static>> {
         info_line("  Created", &created),
     ];
 
+    // Show containers using this image
+    let display = img.display_name();
+    let dependent: Vec<&crate::wslc::types::Container> = app.containers.iter()
+        .filter(|c| c.image == display
+            || img.repository.as_deref().map_or(false, |r| c.image.starts_with(r)))
+        .collect();
+
+    lines.push(Line::from(""));
+    if dependent.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("  Containers  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("none", Style::default().fg(Color::DarkGray)),
+        ]));
+    } else {
+        lines.push(Line::from(Span::styled(
+            format!("  ─── Containers ({}) ───", dependent.len()),
+            Style::default().fg(Color::Yellow),
+        )));
+        for c in &dependent {
+            let dot = if c.is_running() { "●" } else { "○" };
+            let dot_color = if c.is_running() { Color::Green } else { Color::Red };
+            lines.push(Line::from(vec![
+                Span::raw("    "),
+                Span::styled(dot, Style::default().fg(dot_color)),
+                Span::raw(" "),
+                Span::styled(c.name.clone(), Style::default().fg(Color::White)),
+                Span::styled(
+                    format!("  ({})", c.state_label()),
+                    Style::default().fg(dot_color),
+                ),
+            ]));
+        }
+    }
+
     if !app.inspect_text.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled("  ─── Inspect Data ───", Style::default().fg(Color::Cyan))));
