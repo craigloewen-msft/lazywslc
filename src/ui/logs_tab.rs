@@ -44,54 +44,128 @@ pub fn draw_logs_tab(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, inner);
 }
 
-/// Strip ANSI escape sequences and control characters that corrupt TUI rendering.
+/// Strip ALL terminal escape sequences and control characters.
+/// Handles: CSI (ESC[), OSC (ESC]), DCS (ESCP), SOS/PM/APC, SS2/SS3,
+/// single-character escapes (ESC followed by one char), bare \x9B CSI,
+/// \r overwrite behavior, and all C0/C1 control characters.
 pub fn sanitize_output(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
+    // First pass: strip all escape sequences
+    let stripped = strip_escapes(input);
+    // Second pass: handle \r (carriage return) line overwrites
+    handle_carriage_returns(&stripped)
+}
 
-    while let Some(c) = chars.next() {
-        match c {
-            // Strip ANSI escape sequences: ESC [ ... final_byte
-            '\x1b' => {
-                if chars.peek() == Some(&'[') {
-                    chars.next(); // consume '['
-                    // consume until we hit a letter (the final byte of the sequence)
-                    while let Some(&next) = chars.peek() {
-                        chars.next();
-                        if next.is_ascii_alphabetic() || next == '~' {
-                            break;
+fn strip_escapes(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        let b = bytes[i];
+        match b {
+            // ESC (0x1B) — start of escape sequence
+            0x1B => {
+                i += 1;
+                if i >= len { break; }
+                match bytes[i] {
+                    // CSI: ESC [ ... final_byte (0x40-0x7E)
+                    b'[' => {
+                        i += 1;
+                        while i < len && !(0x40..=0x7E).contains(&bytes[i]) {
+                            i += 1;
+                        }
+                        if i < len { i += 1; } // skip final byte
+                    }
+                    // OSC: ESC ] ... (terminated by BEL \x07 or ST = ESC \)
+                    b']' => {
+                        i += 1;
+                        while i < len {
+                            if bytes[i] == 0x07 { i += 1; break; }
+                            if bytes[i] == 0x1B && i + 1 < len && bytes[i + 1] == b'\\' {
+                                i += 2; break;
+                            }
+                            i += 1;
                         }
                     }
-                } else if chars.peek() == Some(&']') {
-                    // OSC sequence: ESC ] ... ST (or BEL)
-                    chars.next();
-                    while let Some(&next) = chars.peek() {
-                        chars.next();
-                        if next == '\x07' || next == '\\' {
-                            break;
+                    // DCS: ESC P ... ST
+                    b'P' => {
+                        i += 1;
+                        while i < len {
+                            if bytes[i] == 0x1B && i + 1 < len && bytes[i + 1] == b'\\' {
+                                i += 2; break;
+                            }
+                            i += 1;
                         }
                     }
-                }
-                // else ignore lone ESC
-            }
-            // Carriage return: take only the last segment (mimics terminal \r overwrite)
-            '\r' => {
-                // Find the last \r-separated segment on this line by discarding what came before
-                if chars.peek() != Some(&'\n') {
-                    // Find end of the current content up to the last \r or \n
-                    let rest_of_line: String = chars.by_ref().take_while(|&ch| ch != '\n' && ch != '\r').collect();
-                    // Pop back to the start of the current line in result
-                    while result.ends_with(|c: char| c != '\n') {
-                        result.pop();
+                    // SOS, PM, APC: ESC X/^/_ ... ST
+                    b'X' | b'^' | b'_' => {
+                        i += 1;
+                        while i < len {
+                            if bytes[i] == 0x1B && i + 1 < len && bytes[i + 1] == b'\\' {
+                                i += 2; break;
+                            }
+                            i += 1;
+                        }
                     }
-                    result.push_str(&rest_of_line);
+                    // SS2/SS3: ESC N/O + one character
+                    b'N' | b'O' => {
+                        i += 1;
+                        if i < len { i += 1; }
+                    }
+                    // Any other single-char escape: ESC + one byte (e.g., ESC =, ESC >, ESC c)
+                    _ => { i += 1; }
                 }
-                // \r\n is just a newline
             }
-            '\n' => result.push('\n'),
-            // Strip other control characters except tab
-            c if c.is_control() && c != '\t' => {}
-            c => result.push(c),
+            // Bare CSI (0x9B) — 8-bit CSI without ESC prefix
+            0x9B => {
+                i += 1;
+                while i < len && !(0x40..=0x7E).contains(&bytes[i]) {
+                    i += 1;
+                }
+                if i < len { i += 1; }
+            }
+            // C1 control range (0x80-0x9F) minus 0x9B which is handled above
+            0x80..=0x9A | 0x9C..=0x9F => {
+                i += 1;
+            }
+            // C0 control characters — keep \n, \r, \t; strip the rest
+            b if b < 0x20 && b != b'\n' && b != b'\r' && b != b'\t' => {
+                i += 1;
+            }
+            // DEL
+            0x7F => { i += 1; }
+            // Normal character — copy it
+            _ => {
+                // Safe to index since we checked it's not a control byte
+                if let Some(ch) = std::str::from_utf8(&bytes[i..]).ok().and_then(|s| s.chars().next()) {
+                    result.push(ch);
+                    i += ch.len_utf8();
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Handle \r: for each line, if it contains \r (not followed by \n),
+/// only keep the text after the last \r (mimics terminal overwrite).
+fn handle_carriage_returns(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+
+    for line in input.split('\n') {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        // Only keep text after the last bare \r
+        if let Some(pos) = line.rfind('\r') {
+            let after = &line[pos + 1..];
+            result.push_str(after);
+        } else {
+            result.push_str(line);
         }
     }
 
