@@ -12,9 +12,8 @@ pub enum ResourceSection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailTab {
+    Main, // Logs + Stats combined (default for containers)
     Info,
-    Logs,
-    Stats,
     Env,
 }
 
@@ -134,7 +133,7 @@ impl App {
             container_index: 0,
             image_index: 0,
             volume_index: 0,
-            detail_tab: DetailTab::Info,
+            detail_tab: DetailTab::Main,
             containers_collapsed: false,
             images_collapsed: false,
             volumes_collapsed: false,
@@ -299,7 +298,7 @@ impl App {
             ResourceSection::Images => ResourceSection::Volumes,
             ResourceSection::Volumes => ResourceSection::Containers,
         };
-        self.detail_tab = DetailTab::Info;
+        self.detail_tab = DetailTab::Main;
     }
 
     pub fn prev_section(&mut self) {
@@ -308,24 +307,22 @@ impl App {
             ResourceSection::Images => ResourceSection::Containers,
             ResourceSection::Volumes => ResourceSection::Images,
         };
-        self.detail_tab = DetailTab::Info;
+        self.detail_tab = DetailTab::Main;
     }
 
     pub fn next_tab(&mut self) {
         self.detail_tab = match self.detail_tab {
-            DetailTab::Info => DetailTab::Logs,
-            DetailTab::Logs => DetailTab::Stats,
-            DetailTab::Stats => DetailTab::Env,
-            DetailTab::Env => DetailTab::Info,
+            DetailTab::Main => DetailTab::Info,
+            DetailTab::Info => DetailTab::Env,
+            DetailTab::Env => DetailTab::Main,
         };
     }
 
     pub fn prev_tab(&mut self) {
         self.detail_tab = match self.detail_tab {
-            DetailTab::Info => DetailTab::Env,
-            DetailTab::Logs => DetailTab::Info,
-            DetailTab::Stats => DetailTab::Logs,
-            DetailTab::Env => DetailTab::Stats,
+            DetailTab::Main => DetailTab::Env,
+            DetailTab::Info => DetailTab::Main,
+            DetailTab::Env => DetailTab::Info,
         };
     }
 

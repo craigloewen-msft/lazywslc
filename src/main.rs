@@ -115,15 +115,15 @@ async fn run_app(
                 // Periodic stats refresh for running containers
                 if tick_counter >= STATS_INTERVAL {
                     tick_counter = 0;
-                    if app.active_section == ResourceSection::Containers
-                        && app.detail_tab == DetailTab::Stats
-                    {
+                    // Load stats and logs for the Main view
+                    if app.active_section == ResourceSection::Containers {
                         if let Some(c) = app.selected_container() {
                             if c.is_running() {
                                 let id = c.id.clone();
                                 fetch_stats(app, &id).await;
                             }
                         }
+                        load_logs_for_selected(app).await;
                     }
                 }
             }
@@ -173,38 +173,26 @@ async fn handle_normal_key(
         // Section switching
         KeyCode::Char('1') => {
             app.active_section = ResourceSection::Containers;
-            app.detail_tab = DetailTab::Info;
+            app.detail_tab = DetailTab::Main;
             load_inspect_for_selected(app).await;
         }
         KeyCode::Char('2') => {
             app.active_section = ResourceSection::Images;
-            app.detail_tab = DetailTab::Info;
+            app.detail_tab = DetailTab::Main;
             load_inspect_for_selected(app).await;
         }
         KeyCode::Char('3') => {
             app.active_section = ResourceSection::Volumes;
-            app.detail_tab = DetailTab::Info;
+            app.detail_tab = DetailTab::Main;
             load_inspect_for_selected(app).await;
         }
 
-        // Detail tab switching (when in detail focus)
+        // Detail tab switching
         KeyCode::Right | KeyCode::Char('L') => {
             app.next_tab();
-            if app.detail_tab == DetailTab::Logs {
-                load_logs_for_selected(app).await;
-            }
-            if app.detail_tab == DetailTab::Stats {
-                load_stats_for_selected(app).await;
-            }
         }
         KeyCode::Left | KeyCode::Char('H') => {
             app.prev_tab();
-            if app.detail_tab == DetailTab::Logs {
-                load_logs_for_selected(app).await;
-            }
-            if app.detail_tab == DetailTab::Stats {
-                load_stats_for_selected(app).await;
-            }
         }
 
         // Collapse/expand
@@ -285,7 +273,7 @@ async fn handle_normal_key(
             }
         }
         KeyCode::Char('l') => {
-            app.detail_tab = DetailTab::Logs;
+            app.detail_tab = DetailTab::Main;
             load_logs_for_selected(app).await;
         }
         KeyCode::Char('R') => {
@@ -451,7 +439,7 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char) {
             prompt_remove(app);
         }
         'l' => {
-            app.detail_tab = DetailTab::Logs;
+            app.detail_tab = DetailTab::Main;
             load_logs_for_selected(app).await;
         }
         'p' => {
@@ -503,8 +491,12 @@ async fn refresh_data(app: &mut App) {
     );
 
     app.containers = containers.unwrap_or_default();
-    app.images = images.unwrap_or_default();
-    app.volumes = volumes.unwrap_or_default();
+    let mut imgs = images.unwrap_or_default();
+    imgs.sort_by(|a, b| a.display_name().cmp(&b.display_name()));
+    app.images = imgs;
+    let mut vols = volumes.unwrap_or_default();
+    vols.sort_by(|a, b| a.name.cmp(&b.name));
+    app.volumes = vols;
 
     app.clamp_indices();
     app.loading = false;
@@ -536,18 +528,6 @@ async fn load_logs_for_selected(app: &mut App) {
                 app.logs_scroll = 0;
             }
             Err(_) => app.logs_text.clear(),
-        }
-    }
-}
-
-async fn load_stats_for_selected(app: &mut App) {
-    if app.active_section != ResourceSection::Containers {
-        return;
-    }
-    if let Some(c) = app.selected_container() {
-        if c.is_running() {
-            let id = c.id.clone();
-            fetch_stats(app, &id).await;
         }
     }
 }

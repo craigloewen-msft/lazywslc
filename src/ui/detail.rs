@@ -31,18 +31,11 @@ pub fn draw_detail(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(inner);
 
-    // Tab titles depend on resource type
-    let tab_titles = match app.active_section {
-        ResourceSection::Containers => vec!["Info", "Logs", "Stats", "Env"],
-        ResourceSection::Images => vec!["Info", "Logs", "Stats", "Env"],
-        ResourceSection::Volumes => vec!["Info", "Logs", "Stats", "Env"],
-    };
-
+    let tab_titles = vec!["Main", "Info", "Env"];
     let selected = match app.detail_tab {
-        DetailTab::Info => 0,
-        DetailTab::Logs => 1,
-        DetailTab::Stats => 2,
-        DetailTab::Env => 3,
+        DetailTab::Main => 0,
+        DetailTab::Info => 1,
+        DetailTab::Env => 2,
     };
 
     let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
@@ -57,11 +50,33 @@ pub fn draw_detail(f: &mut Frame, app: &App, area: Rect) {
 
     f.render_widget(tabs, layout[0]);
 
-    // Draw the active tab content
     match app.detail_tab {
+        DetailTab::Main => draw_main_view(f, app, layout[1]),
         DetailTab::Info => draw_info_tab(f, app, layout[1]),
-        DetailTab::Logs => draw_logs_tab(f, app, layout[1]),
-        DetailTab::Stats => draw_stats_tab(f, app, layout[1]),
         DetailTab::Env => draw_env_tab(f, app, layout[1]),
     }
+}
+
+/// Combined Logs + Stats view (default for containers)
+fn draw_main_view(f: &mut Frame, app: &App, area: Rect) {
+    if app.active_section == ResourceSection::Containers {
+        if let Some(c) = app.selected_container() {
+            if c.is_running() {
+                // Running container: logs on top, stats on bottom
+                let split = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Percentage(50), // logs
+                        Constraint::Percentage(50), // stats + graphs
+                    ])
+                    .split(area);
+
+                draw_logs_tab(f, app, split[0]);
+                draw_stats_tab(f, app, split[1]);
+                return;
+            }
+        }
+    }
+    // Non-container or stopped: just show logs (or empty message)
+    draw_logs_tab(f, app, area);
 }

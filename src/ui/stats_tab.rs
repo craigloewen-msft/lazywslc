@@ -82,31 +82,37 @@ fn draw_sparkline_graphs(f: &mut Frame, app: &App, container_id: &str, area: Rec
         .split(area);
 
     if let Some(history) = app.get_stats_history(container_id) {
-        // CPU sparkline
+        // CPU sparkline — auto-scale based on max observed value
         let cpu_data: Vec<u64> = history.cpu.iter().map(|v| (*v * 100.0) as u64).collect();
+        let cpu_max = cpu_data.iter().copied().max().unwrap_or(100);
+        let cpu_ceil = (cpu_max + cpu_max / 5).max(100); // 20% headroom, min 1.00%
+        let cpu_label = format!(" CPU % (max: {:.1}%) ", cpu_ceil as f64 / 100.0);
         let cpu_sparkline = Sparkline::default()
             .block(
                 Block::default()
-                    .title(Span::styled(" CPU % ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)))
+                    .title(Span::styled(cpu_label, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)))
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::DarkGray)),
             )
             .data(&cpu_data)
-            .max(10000) // 100.00%
+            .max(cpu_ceil)
             .style(Style::default().fg(Color::Green));
         f.render_widget(cpu_sparkline, layout[0]);
 
-        // Memory sparkline
+        // Memory sparkline — auto-scale
         let mem_data: Vec<u64> = history.memory.iter().map(|v| (*v * 100.0) as u64).collect();
+        let mem_max = mem_data.iter().copied().max().unwrap_or(100);
+        let mem_ceil = (mem_max + mem_max / 5).max(100); // 20% headroom, min 1.00%
+        let mem_label = format!(" Memory % (max: {:.1}%) ", mem_ceil as f64 / 100.0);
         let mem_sparkline = Sparkline::default()
             .block(
                 Block::default()
-                    .title(Span::styled(" Memory % ", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)))
+                    .title(Span::styled(mem_label, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)))
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::DarkGray)),
             )
             .data(&mem_data)
-            .max(10000) // 100.00%
+            .max(mem_ceil)
             .style(Style::default().fg(Color::Blue));
         f.render_widget(mem_sparkline, layout[1]);
     } else {
