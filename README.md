@@ -18,7 +18,11 @@ A **lazydocker-inspired** TUI dashboard for managing WSL Linux containers via `w
 
 ## Install
 
-### Download binary (easiest)
+### MSI installer (recommended)
+
+Download `lazywslc-x.y.z-x86_64.msi` from the [Releases](https://github.com/crloewen/lazywslc/releases) page. Double-click to install — it adds `lazywslc` to your PATH and shows up in Add/Remove Programs.
+
+### Download binary
 
 Download `lazywslc.exe` from the [Releases](https://github.com/crloewen/lazywslc/releases) page and place it somewhere in your PATH.
 

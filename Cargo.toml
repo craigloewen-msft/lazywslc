@@ -2,6 +2,7 @@
 name = "lazywslc"
 version = "0.1.0"
 edition = "2024"
+authors = ["crloewen"]
 description = "A lazydocker-inspired TUI dashboard for managing WSL Linux containers via wslc.exe"
 license = "MIT"
 repository = "https://github.com/crloewen/lazywslc"

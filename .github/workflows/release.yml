@@ -20,8 +20,16 @@ jobs:
       - name: Build release
         run: cargo build --release
 
+      - name: Install cargo-wix
+        run: cargo install cargo-wix
+
+      - name: Build MSI installer
+        run: cargo wix --nocapture
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/lazywslc.exe
+          files: |
+            target/release/lazywslc.exe
+            target/wix/*.msi
           generate_release_notes: true
