@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 
 use crate::app::{App, ResourceSection, FocusPanel};
 use crate::wslc::types::relative_time;
@@ -69,7 +69,10 @@ pub fn draw_container_panel(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let paragraph = Paragraph::new(lines);
+    let selected_height: usize = if focused { 2 } else { 1 };
+    let scroll_offset = (app.container_index + selected_height)
+        .saturating_sub(inner.height as usize) as u16;
+    let paragraph = Paragraph::new(lines).scroll((scroll_offset, 0));
     f.render_widget(paragraph, inner);
 }
 
@@ -137,7 +140,10 @@ pub fn draw_image_panel(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let paragraph = Paragraph::new(lines);
+    let selected_height: usize = if focused { 2 } else { 1 };
+    let scroll_offset = (app.image_index + selected_height)
+        .saturating_sub(inner.height as usize) as u16;
+    let paragraph = Paragraph::new(lines).scroll((scroll_offset, 0));
     f.render_widget(paragraph, inner);
 }
 
@@ -179,7 +185,10 @@ pub fn draw_volume_panel(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    f.render_widget(List::new(items), inner);
+    let scroll_offset = (app.volume_index + 1)
+        .saturating_sub(inner.height as usize);
+    let mut list_state = ListState::default().with_offset(scroll_offset);
+    f.render_stateful_widget(List::new(items), inner, &mut list_state);
 }
 
 fn truncate_str(s: &str, max: usize) -> String {
