@@ -33,12 +33,9 @@ pub fn draw_logs_tab(f: &mut Frame, app: &App, area: Rect) {
     let visible = inner.height;
     let max_scroll = total.saturating_sub(visible);
 
-    // Auto-scroll to bottom unless user has manually scrolled up
-    let scroll = if app.logs_scroll == 0 {
-        max_scroll // default: show latest logs at bottom
-    } else {
-        app.logs_scroll.min(max_scroll)
-    };
+    // Auto-scroll to bottom, offset by user scroll-back amount
+    // logs_scroll = 0 means at the bottom; higher = scrolled further back
+    let scroll = max_scroll.saturating_sub(app.logs_scroll).min(max_scroll);
 
     let paragraph = Paragraph::new(lines).scroll((scroll, 0));
     f.render_widget(paragraph, inner);

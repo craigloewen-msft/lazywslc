@@ -317,12 +317,12 @@ async fn handle_normal_key(
             *show_help = true;
         }
 
-        // Scroll logs
+        // Scroll logs (logs_scroll = offset from bottom, so PageUp = increase)
         KeyCode::PageDown => {
-            app.logs_scroll = app.logs_scroll.saturating_add(10);
+            app.logs_scroll = app.logs_scroll.saturating_sub(10);
         }
         KeyCode::PageUp => {
-            app.logs_scroll = app.logs_scroll.saturating_sub(10);
+            app.logs_scroll = app.logs_scroll.saturating_add(10);
         }
 
         // Scroll info (f = forward, b = backward)
@@ -619,7 +619,7 @@ async fn handle_mouse(
                 app.move_up();
             } else if rect_contains(&areas.detail_area, col, row) {
                 match app.detail_tab {
-                    DetailTab::Main => app.logs_scroll = app.logs_scroll.saturating_sub(3),
+                    DetailTab::Main => app.logs_scroll = app.logs_scroll.saturating_add(3),
                     DetailTab::Info => app.info_scroll = app.info_scroll.saturating_sub(3),
                     _ => {}
                 }
@@ -633,7 +633,7 @@ async fn handle_mouse(
                 app.move_down();
             } else if rect_contains(&areas.detail_area, col, row) {
                 match app.detail_tab {
-                    DetailTab::Main => app.logs_scroll = app.logs_scroll.saturating_add(3),
+                    DetailTab::Main => app.logs_scroll = app.logs_scroll.saturating_sub(3),
                     DetailTab::Info => app.info_scroll = app.info_scroll.saturating_add(3),
                     _ => {}
                 }
