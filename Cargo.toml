@@ -1,6 +1,6 @@
 [package]
 name = "lazywslc"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["crloewen"]
 description = "A lazydocker-inspired TUI dashboard for managing WSL Linux containers via wslc.exe"
