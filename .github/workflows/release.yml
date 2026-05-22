@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - release
 
 permissions:
   contents: write
@@ -26,9 +26,17 @@ jobs:
       - name: Build MSI installer
         run: cargo wix --nocapture
 
+      - name: Get version
+        id: version
+        run: |
+          $ver = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          echo "VERSION=v$ver" >> $env:GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: ${{ steps.version.outputs.VERSION }}
           files: |
             target/release/lazywslc.exe
             target/wix/*.msi
