@@ -1,6 +1,8 @@
 # 🐧 lazywslc
 
-A **lazydocker-inspired** TUI dashboard for managing WSL Linux containers via `wslc.exe`.
+A [**lazydocker-inspired**](https://github.com/jesseduffield/lazydocker) TUI dashboard for managing WSL Linux containers via `wslc.exe`.
+
+![Featured Image](./docs/hero_image.png)
 
 ## Features
 
