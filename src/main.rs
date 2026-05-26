@@ -13,6 +13,7 @@ use crossterm::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use tokio::sync::mpsc;
 
 use app::{App, ConfirmAction, DetailTab, InputMode, ResourceSection};
 use event::{AppEvent, poll_event, is_quit};
@@ -21,6 +22,22 @@ const TICK_RATE: Duration = Duration::from_millis(250);
 const STATS_INTERVAL: u8 = 8;   // every 8 ticks × 250ms = ~2 seconds
 const REFRESH_INTERVAL: u8 = 4; // every 4 ticks × 250ms = ~1 second
 const SPLASH_DURATION: u16 = 20; // 20 ticks × 250ms = 5 seconds
+
+/// Messages sent from background tasks back to the main event loop.
+enum BgMessage {
+    DataRefreshed {
+        containers: Vec<wslc::types::Container>,
+        images: Vec<wslc::types::Image>,
+        volumes: Vec<wslc::types::Volume>,
+    },
+    StatsLoaded {
+        container_id: String,
+        text: String,
+    },
+    LogsLoaded {
+        text: String,
+    },
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -50,14 +67,22 @@ async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<()> {
-    // Initial data load
-    refresh_data(app).await;
+    let (bg_tx, mut bg_rx) = mpsc::unbounded_channel::<BgMessage>();
+
+    // Kick off initial data load in background so the UI renders instantly
+    app.loading = true;
+    spawn_refresh(bg_tx.clone());
 
     let mut tick_counter: u8 = 0;
     let mut refresh_counter: u8 = 0;
     let mut show_help = false;
 
     loop {
+        // Drain background results (non-blocking)
+        while let Ok(msg) = bg_rx.try_recv() {
+            handle_bg_message(app, msg).await;
+        }
+
         // Draw
         terminal.draw(|f| {
             ui::layout::draw(f, app);
@@ -77,19 +102,19 @@ async fn run_app(
 
                 match app.input_mode {
                     InputMode::Normal => {
-                        handle_normal_key(app, key.code, key.modifiers, &mut show_help).await;
+                        handle_normal_key(app, key.code, key.modifiers, &mut show_help, &bg_tx).await;
                     }
                     InputMode::Filter => {
                         handle_filter_key(app, key.code);
                     }
                     InputMode::Confirm => {
-                        handle_confirm_key(app, key.code).await;
+                        handle_confirm_key(app, key.code, &bg_tx).await;
                     }
                     InputMode::ActionMenu => {
-                        handle_action_menu_key(app, key.code).await;
+                        handle_action_menu_key(app, key.code, &bg_tx).await;
                     }
                     InputMode::PullInput => {
-                        handle_pull_input_key(app, key.code).await;
+                        handle_pull_input_key(app, key.code, &bg_tx).await;
                     }
                 }
             }
@@ -112,24 +137,27 @@ async fn run_app(
                     }
                 }
 
-                // Auto-refresh data every ~1 second
+                // Auto-refresh data in background (skip if already loading)
                 if refresh_counter >= REFRESH_INTERVAL {
                     refresh_counter = 0;
-                    refresh_data(app).await;
+                    if !app.loading {
+                        app.loading = true;
+                        spawn_refresh(bg_tx.clone());
+                    }
                 }
 
-                // Periodic stats refresh for running containers
+                // Periodic stats/logs refresh in background
                 if tick_counter >= STATS_INTERVAL {
                     tick_counter = 0;
-                    // Load stats and logs for the Main view
                     if app.active_section == ResourceSection::Containers {
                         if let Some(c) = app.selected_container() {
                             if c.is_running() {
-                                let id = c.id.clone();
-                                fetch_stats(app, &id).await;
+                                spawn_stats(bg_tx.clone(), c.id.clone());
                             }
                         }
-                        load_logs_for_selected(app).await;
+                        if let Some(c) = app.selected_container() {
+                            spawn_logs(bg_tx.clone(), c.id.clone());
+                        }
                     }
                 }
             }
@@ -147,6 +175,7 @@ async fn handle_normal_key(
     code: KeyCode,
     modifiers: KeyModifiers,
     show_help: &mut bool,
+    bg_tx: &mpsc::UnboundedSender<BgMessage>,
 ) {
     if is_quit(&crossterm::event::KeyEvent::new(code, modifiers)) {
         app.running = false;
@@ -227,11 +256,13 @@ async fn handle_normal_key(
                         match wslc::commands::start_container(&id).await {
                             Ok(_) => {
                                 app.set_flash("Container started".into());
-                                refresh_data(app).await;
+                                spawn_refresh(bg_tx.clone());
                             }
-                            Err(e) => app.set_flash(format!("Error: {}", e)),
+                            Err(e) => {
+                                app.set_flash(format!("Error: {}", e));
+                                app.loading = false;
+                            }
                         }
-                        app.loading = false;
                     }
                 }
             }
@@ -245,11 +276,13 @@ async fn handle_normal_key(
                         match wslc::commands::stop_container(&id).await {
                             Ok(_) => {
                                 app.set_flash("Container stopped".into());
-                                refresh_data(app).await;
+                                spawn_refresh(bg_tx.clone());
                             }
-                            Err(e) => app.set_flash(format!("Error: {}", e)),
+                            Err(e) => {
+                                app.set_flash(format!("Error: {}", e));
+                                app.loading = false;
+                            }
                         }
-                        app.loading = false;
                     }
                 }
             }
@@ -263,11 +296,13 @@ async fn handle_normal_key(
                         match wslc::commands::kill_container(&id).await {
                             Ok(_) => {
                                 app.set_flash("Container killed".into());
-                                refresh_data(app).await;
+                                spawn_refresh(bg_tx.clone());
                             }
-                            Err(e) => app.set_flash(format!("Error: {}", e)),
+                            Err(e) => {
+                                app.set_flash(format!("Error: {}", e));
+                                app.loading = false;
+                            }
                         }
-                        app.loading = false;
                     }
                 }
             }
@@ -306,8 +341,9 @@ async fn handle_normal_key(
             load_logs_for_selected(app).await;
         }
         KeyCode::Char('R') => {
-            refresh_data(app).await;
-            app.set_flash("Data refreshed".into());
+            app.loading = true;
+            spawn_refresh(bg_tx.clone());
+            app.set_flash("Refreshing...".into());
         }
         KeyCode::Char('/') => {
             app.filter_text.clear();
@@ -358,7 +394,7 @@ fn handle_filter_key(app: &mut App, code: KeyCode) {
     }
 }
 
-async fn handle_confirm_key(app: &mut App, code: KeyCode) {
+async fn handle_confirm_key(app: &mut App, code: KeyCode, bg_tx: &mpsc::UnboundedSender<BgMessage>) {
     match code {
         KeyCode::Char('y') | KeyCode::Char('Y') => {
             if let Some(action) = app.confirm_action.take() {
@@ -390,11 +426,13 @@ async fn handle_confirm_key(app: &mut App, code: KeyCode) {
                 match result {
                     Ok(msg) => {
                         app.set_flash(msg);
-                        refresh_data(app).await;
+                        spawn_refresh(bg_tx.clone());
                     }
-                    Err(e) => app.set_flash(format!("Error: {}", e)),
+                    Err(e) => {
+                        app.set_flash(format!("Error: {}", e));
+                        app.loading = false;
+                    }
                 }
-                app.loading = false;
             }
             app.input_mode = InputMode::Normal;
         }
@@ -406,7 +444,7 @@ async fn handle_confirm_key(app: &mut App, code: KeyCode) {
     }
 }
 
-async fn handle_action_menu_key(app: &mut App, code: KeyCode) {
+async fn handle_action_menu_key(app: &mut App, code: KeyCode, bg_tx: &mpsc::UnboundedSender<BgMessage>) {
     match code {
         KeyCode::Esc => {
             app.input_mode = InputMode::Normal;
@@ -426,7 +464,7 @@ async fn handle_action_menu_key(app: &mut App, code: KeyCode) {
                 .map(|item| item.hotkey);
             app.input_mode = InputMode::Normal;
             if let Some(key) = hotkey {
-                execute_action_hotkey(app, key).await;
+                execute_action_hotkey(app, key, bg_tx).await;
             }
         }
         KeyCode::Char(c) => {
@@ -434,14 +472,14 @@ async fn handle_action_menu_key(app: &mut App, code: KeyCode) {
             let found = app.action_menu_items.iter().any(|item| item.hotkey == c);
             if found {
                 app.input_mode = InputMode::Normal;
-                execute_action_hotkey(app, c).await;
+                execute_action_hotkey(app, c, bg_tx).await;
             }
         }
         _ => {}
     }
 }
 
-async fn execute_action_hotkey(app: &mut App, hotkey: char) {
+async fn execute_action_hotkey(app: &mut App, hotkey: char, bg_tx: &mpsc::UnboundedSender<BgMessage>) {
     match hotkey {
         's' => {
             if let Some(c) = app.selected_container() {
@@ -450,11 +488,13 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char) {
                 match wslc::commands::start_container(&id).await {
                     Ok(_) => {
                         app.set_flash("Container started".into());
-                        refresh_data(app).await;
+                        spawn_refresh(bg_tx.clone());
                     }
-                    Err(e) => app.set_flash(format!("Error: {}", e)),
+                    Err(e) => {
+                        app.set_flash(format!("Error: {}", e));
+                        app.loading = false;
+                    }
                 }
-                app.loading = false;
             }
         }
         'S' => {
@@ -464,11 +504,13 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char) {
                 match wslc::commands::stop_container(&id).await {
                     Ok(_) => {
                         app.set_flash("Container stopped".into());
-                        refresh_data(app).await;
+                        spawn_refresh(bg_tx.clone());
                     }
-                    Err(e) => app.set_flash(format!("Error: {}", e)),
+                    Err(e) => {
+                        app.set_flash(format!("Error: {}", e));
+                        app.loading = false;
+                    }
                 }
-                app.loading = false;
             }
         }
         'K' => {
@@ -478,11 +520,13 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char) {
                 match wslc::commands::kill_container(&id).await {
                     Ok(_) => {
                         app.set_flash("Container killed".into());
-                        refresh_data(app).await;
+                        spawn_refresh(bg_tx.clone());
                     }
-                    Err(e) => app.set_flash(format!("Error: {}", e)),
+                    Err(e) => {
+                        app.set_flash(format!("Error: {}", e));
+                        app.loading = false;
+                    }
                 }
-                app.loading = false;
             }
         }
         'x' => {
@@ -527,7 +571,7 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char) {
     }
 }
 
-async fn handle_pull_input_key(app: &mut App, code: KeyCode) {
+async fn handle_pull_input_key(app: &mut App, code: KeyCode, bg_tx: &mpsc::UnboundedSender<BgMessage>) {
     match code {
         KeyCode::Esc => {
             app.input_mode = InputMode::Normal;
@@ -541,11 +585,13 @@ async fn handle_pull_input_key(app: &mut App, code: KeyCode) {
                 match wslc::commands::pull_image(&name).await {
                     Ok(_) => {
                         app.set_flash(format!("Pulled '{}'", name));
-                        refresh_data(app).await;
+                        spawn_refresh(bg_tx.clone());
                     }
-                    Err(e) => app.set_flash(format!("Pull failed: {}", e)),
+                    Err(e) => {
+                        app.set_flash(format!("Pull failed: {}", e));
+                        app.loading = false;
+                    }
                 }
-                app.loading = false;
             }
         }
         KeyCode::Char(c) => {
@@ -698,28 +744,88 @@ fn handle_tab_click(app: &mut App, col: u16, areas: &ui::layout::LayoutAreas) {
     }
 }
 
-async fn refresh_data(app: &mut App) {
-    app.loading = true;
+// ---------------------------------------------------------------------------
+// Background task spawners
+// ---------------------------------------------------------------------------
 
-    let (containers, images, volumes) = tokio::join!(
-        wslc::commands::list_containers(),
-        wslc::commands::list_images(),
-        wslc::commands::list_volumes(),
-    );
-
-    app.containers = containers.unwrap_or_default();
-    let mut imgs = images.unwrap_or_default();
-    imgs.sort_by(|a, b| a.display_name().cmp(&b.display_name()));
-    app.images = imgs;
-    let mut vols = volumes.unwrap_or_default();
-    vols.sort_by(|a, b| a.name.cmp(&b.name));
-    app.volumes = vols;
-
-    app.clamp_indices();
-    app.loading = false;
-
-    load_inspect_for_selected(app).await;
+fn spawn_refresh(tx: mpsc::UnboundedSender<BgMessage>) {
+    tokio::spawn(async move {
+        let (containers, images, volumes) = tokio::join!(
+            wslc::commands::list_containers(),
+            wslc::commands::list_images(),
+            wslc::commands::list_volumes(),
+        );
+        let _ = tx.send(BgMessage::DataRefreshed {
+            containers: containers.unwrap_or_default(),
+            images: images.unwrap_or_default(),
+            volumes: volumes.unwrap_or_default(),
+        });
+    });
 }
+
+fn spawn_stats(tx: mpsc::UnboundedSender<BgMessage>, container_id: String) {
+    tokio::spawn(async move {
+        let text = wslc::commands::container_stats(&container_id)
+            .await
+            .unwrap_or_default();
+        let _ = tx.send(BgMessage::StatsLoaded { container_id, text });
+    });
+}
+
+fn spawn_logs(tx: mpsc::UnboundedSender<BgMessage>, container_id: String) {
+    tokio::spawn(async move {
+        let text = wslc::commands::container_logs(&container_id, 200)
+            .await
+            .unwrap_or_default();
+        let _ = tx.send(BgMessage::LogsLoaded { text });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Background message handler
+// ---------------------------------------------------------------------------
+
+async fn handle_bg_message(app: &mut App, msg: BgMessage) {
+    match msg {
+        BgMessage::DataRefreshed { containers, images, volumes } => {
+            app.containers = containers;
+            let mut imgs = images;
+            imgs.sort_by(|a, b| a.display_name().cmp(&b.display_name()));
+            app.images = imgs;
+            let mut vols = volumes;
+            vols.sort_by(|a, b| a.name.cmp(&b.name));
+            app.volumes = vols;
+            app.clamp_indices();
+            app.loading = false;
+            load_inspect_for_selected(app).await;
+        }
+        BgMessage::StatsLoaded { container_id, text } => {
+            app.stats_text = text.clone();
+            let trimmed = text.trim();
+            if let Ok(stats) = serde_json::from_str::<wslc::types::Stats>(trimmed) {
+                let cpu_val = parse_percent(stats.cpu_perc.as_deref().unwrap_or("0"));
+                let mem_val = parse_percent(stats.mem_perc.as_deref().unwrap_or("0"));
+                app.push_stats_sample(&container_id, cpu_val, mem_val);
+                app.current_stats = Some(stats);
+            } else if let Ok(stats_arr) = serde_json::from_str::<Vec<wslc::types::Stats>>(trimmed) {
+                if let Some(stats) = stats_arr.into_iter().next() {
+                    let cpu_val = parse_percent(stats.cpu_perc.as_deref().unwrap_or("0"));
+                    let mem_val = parse_percent(stats.mem_perc.as_deref().unwrap_or("0"));
+                    app.push_stats_sample(&container_id, cpu_val, mem_val);
+                    app.current_stats = Some(stats);
+                }
+            }
+        }
+        BgMessage::LogsLoaded { text } => {
+            app.logs_text = text;
+            app.logs_scroll = 0;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers (still used inline for navigation / on-demand loads)
+// ---------------------------------------------------------------------------
 
 async fn load_inspect_for_selected(app: &mut App) {
     let id = app.selected_resource_id();
@@ -745,35 +851,6 @@ async fn load_logs_for_selected(app: &mut App) {
                 app.logs_scroll = 0;
             }
             Err(_) => app.logs_text.clear(),
-        }
-    }
-}
-
-async fn fetch_stats(app: &mut App, container_id: &str) {
-    match wslc::commands::container_stats(container_id).await {
-        Ok(text) => {
-            app.stats_text = text.clone();
-            // Try to parse stats JSON
-            let trimmed = text.trim();
-            // Stats can be a JSON object or array
-            if let Ok(stats) = serde_json::from_str::<wslc::types::Stats>(trimmed) {
-                // Parse CPU percentage
-                let cpu_val = parse_percent(stats.cpu_perc.as_deref().unwrap_or("0"));
-                let mem_val = parse_percent(stats.mem_perc.as_deref().unwrap_or("0"));
-                app.push_stats_sample(container_id, cpu_val, mem_val);
-                app.current_stats = Some(stats);
-            } else if let Ok(stats_arr) = serde_json::from_str::<Vec<wslc::types::Stats>>(trimmed) {
-                if let Some(stats) = stats_arr.into_iter().next() {
-                    let cpu_val = parse_percent(stats.cpu_perc.as_deref().unwrap_or("0"));
-                    let mem_val = parse_percent(stats.mem_perc.as_deref().unwrap_or("0"));
-                    app.push_stats_sample(container_id, cpu_val, mem_val);
-                    app.current_stats = Some(stats);
-                }
-            }
-        }
-        Err(_) => {
-            app.stats_text.clear();
-            app.current_stats = None;
         }
     }
 }
@@ -811,4 +888,3 @@ fn prompt_remove(app: &mut App) {
         }
     }
 }
-
