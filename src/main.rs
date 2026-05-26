@@ -21,7 +21,6 @@ use event::{AppEvent, poll_event, is_quit};
 const TICK_RATE: Duration = Duration::from_millis(250);
 const STATS_INTERVAL: u8 = 8;   // every 8 ticks × 250ms = ~2 seconds
 const REFRESH_INTERVAL: u8 = 4; // every 4 ticks × 250ms = ~1 second
-const SPLASH_DURATION: u16 = 20; // 20 ticks × 250ms = 5 seconds
 
 /// Messages sent from background tasks back to the main event loop.
 enum BgMessage {
@@ -80,7 +79,7 @@ async fn run_app(
     loop {
         // Drain background results (non-blocking)
         while let Ok(msg) = bg_rx.try_recv() {
-            handle_bg_message(app, msg).await;
+            handle_bg_message(app, msg);
         }
 
         // Draw
@@ -129,16 +128,8 @@ async fn run_app(
                 tick_counter += 1;
                 refresh_counter += 1;
 
-                // Splash timeout
-                if app.show_splash {
-                    app.splash_ticks += 1;
-                    if app.splash_ticks >= SPLASH_DURATION {
-                        app.show_splash = false;
-                    }
-                }
-
-                // Auto-refresh data in background (skip if already loading)
-                if refresh_counter >= REFRESH_INTERVAL {
+                // Auto-refresh data in background (skip if already loading or still showing splash)
+                if refresh_counter >= REFRESH_INTERVAL && !app.show_splash {
                     refresh_counter = 0;
                     if !app.loading {
                         app.loading = true;
@@ -147,7 +138,7 @@ async fn run_app(
                 }
 
                 // Periodic stats/logs refresh in background
-                if tick_counter >= STATS_INTERVAL {
+                if tick_counter >= STATS_INTERVAL && !app.show_splash {
                     tick_counter = 0;
                     if app.active_section == ResourceSection::Containers {
                         if let Some(c) = app.selected_container() {
@@ -785,7 +776,7 @@ fn spawn_logs(tx: mpsc::UnboundedSender<BgMessage>, container_id: String) {
 // Background message handler
 // ---------------------------------------------------------------------------
 
-async fn handle_bg_message(app: &mut App, msg: BgMessage) {
+fn handle_bg_message(app: &mut App, msg: BgMessage) {
     match msg {
         BgMessage::DataRefreshed { containers, images, volumes } => {
             app.containers = containers;
@@ -797,7 +788,10 @@ async fn handle_bg_message(app: &mut App, msg: BgMessage) {
             app.volumes = vols;
             app.clamp_indices();
             app.loading = false;
-            load_inspect_for_selected(app).await;
+            // Hide splash screen now that we have data
+            app.show_splash = false;
+            // Note: We don't load inspect here to keep message handler fast.
+            // It will be loaded on-demand when user navigates.
         }
         BgMessage::StatsLoaded { container_id, text } => {
             app.stats_text = text.clone();

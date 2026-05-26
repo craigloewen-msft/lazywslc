@@ -75,25 +75,23 @@ pub fn compute_areas(app: &App, size: Rect) -> LayoutAreas {
 pub fn draw(f: &mut Frame, app: &App) {
     let size = f.area();
 
-    // Main vertical layout: optional splash + body + status
-    let mut constraints = Vec::new();
+    // Show ONLY splash screen until data is loaded
     if app.show_splash {
-        constraints.push(Constraint::Length(3)); // splash header
+        draw_splash_screen(f, size);
+        return;
     }
-    constraints.push(Constraint::Min(10)); // body
-    constraints.push(Constraint::Length(3)); // status bar
 
+    // Main vertical layout: body + status
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(constraints)
+        .constraints([
+            Constraint::Min(10), // body
+            Constraint::Length(3), // status bar
+        ])
         .split(size);
 
-    let (body_area, status_area) = if app.show_splash {
-        draw_title(f, outer[0]);
-        (outer[1], outer[2])
-    } else {
-        (outer[0], outer[1])
-    };
+    let body_area = outer[0];
+    let status_area = outer[1];
 
     // Body: left column (28%) | right panel (72%)
     let body = Layout::default()
@@ -156,6 +154,41 @@ pub fn draw(f: &mut Frame, app: &App) {
     if app.input_mode == InputMode::Filter {
         draw_filter_input(f, app, size);
     }
+}
+
+fn draw_splash_screen(f: &mut Frame, area: Rect) {
+    // Center a nice splash box
+    let splash_area = centered_rect(50, 10, area);
+    
+    let splash_text = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "🐧 lazywslc",
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "WSL Container Dashboard",
+            Style::default().fg(Color::Cyan),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Welcome to LazyWSLc! Starting up the WSLc process and loading data...",
+            Style::default().fg(Color::Yellow),
+        )),
+    ];
+    
+    let splash = Paragraph::new(splash_text)
+        .alignment(ratatui::layout::Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Magenta))
+                .border_type(ratatui::widgets::BorderType::Double),
+        );
+    
+    f.render_widget(Clear, splash_area);
+    f.render_widget(splash, splash_area);
 }
 
 fn draw_title(f: &mut Frame, area: Rect) {
