@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -44,13 +44,7 @@ pub fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let loading_indicator = if app.loading {
-        Span::styled(" ⟳ ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-    } else {
-        Span::raw("")
-    };
-
-    let mut all_spans = vec![Span::raw(" "), loading_indicator];
+    let mut all_spans = vec![Span::raw(" ")];
     all_spans.extend(spans);
 
     let bar = Paragraph::new(Line::from(all_spans)).block(
