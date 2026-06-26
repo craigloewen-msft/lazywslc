@@ -53,3 +53,25 @@ jobs:
             lazywslc-arm64.exe
             target/wix/*.msi
           generate_release_notes: true
+
+      - name: Publish to WinGet
+        # Never fail the release if WinGet publishing has a problem (e.g. the
+        # package isn't in winget-pkgs yet, or WINGET_TOKEN isn't set). The
+        # GitHub Release above has already been created at this point.
+        continue-on-error: true
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+
+          $tag = "${{ steps.version.outputs.VERSION }}"   # e.g. v0.1.4
+          $version = $tag.TrimStart('v')                  # e.g. 0.1.4
+          $base = "https://github.com/${{ github.repository }}/releases/download/$tag"
+
+          # Asset names are produced by the cargo-wix steps above.
+          $x64Url = "$base/lazywslc-$version-x86_64.msi"
+          $arm64Url = "$base/lazywslc-$version-aarch64.msi"
+
+          $wingetPackageId = "crloewen.lazywslc"
+
+          & curl.exe -JLO https://aka.ms/wingetcreate/latest
+          & .\wingetcreate.exe update $wingetPackageId -s -v $version -u "$x64Url|x64" "$arm64Url|arm64" -t "${{ secrets.WINGET_TOKEN }}"
