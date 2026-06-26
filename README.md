@@ -15,7 +15,13 @@ A [**lazydocker-inspired**](https://github.com/jesseduffield/lazydocker) TUI das
 
 ## Install
 
-Grab the latest `.msi` or `.exe` from the [Releases](https://github.com/crloewen/lazywslc/releases) page.
+With [WinGet](https://learn.microsoft.com/windows/package-manager/):
+
+```powershell
+winget install crloewen.lazywslc
+```
+
+Or grab the latest `.msi` or `.exe` from the [Releases](https://github.com/craigloewen-msft/lazywslc/releases) page.
 
 ## Contribute
 

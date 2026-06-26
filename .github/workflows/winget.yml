@@ -1,0 +1,44 @@
+name: Publish to WinGet
+
+on:
+  release:
+    types: [released]
+
+permissions: {}
+
+jobs:
+  publish:
+    # Skip pre-releases; only publish stable releases to WinGet.
+    if: github.event.release.prerelease == false
+    runs-on: windows-latest # wingetcreate can only run on Windows
+    steps:
+      - name: Publish lazywslc to WinGet
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+
+          # The release assets are provided by the "Release" workflow.
+          $assets = '${{ toJSON(github.event.release.assets) }}' | ConvertFrom-Json
+          $x64Asset = $assets | Where-Object { $_.name -like '*x86_64.msi' } | Select-Object -First 1
+          $arm64Asset = $assets | Where-Object { $_.name -like '*aarch64.msi' } | Select-Object -First 1
+
+          if (-not $x64Asset) {
+            throw "Could not find an '*x86_64.msi' asset on release '${{ github.event.release.tag_name }}'."
+          }
+
+          # Build the installer list for wingetcreate ("<url>|<arch>" per installer).
+          $installers = @("$($x64Asset.browser_download_url)|x64")
+          if ($arm64Asset) {
+            $installers += "$($arm64Asset.browser_download_url)|arm64"
+          }
+          else {
+            Write-Warning "No '*aarch64.msi' asset found; publishing x64 only."
+          }
+
+          # WinGet package versions must not contain a leading 'v', so strip it from the tag.
+          $version = "${{ github.event.release.tag_name }}".TrimStart('v')
+
+          $wingetPackageId = "crloewen.lazywslc"
+
+          & curl.exe -JLO https://aka.ms/wingetcreate/latest
+          & .\wingetcreate.exe update $wingetPackageId -s -v $version -u $installers -t "${{ secrets.WINGET_TOKEN }}"

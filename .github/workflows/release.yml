@@ -16,15 +16,26 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
 
-      - name: Build release
+      - name: Build release (x64)
         run: cargo build --release
+
+      - name: Build release (ARM64)
+        run: cargo build --release --target aarch64-pc-windows-msvc
 
       - name: Install cargo-wix
         run: cargo install cargo-wix
 
-      - name: Build MSI installer
+      - name: Build MSI installer (x64)
         run: cargo wix --nocapture
+
+      - name: Build MSI installer (ARM64)
+        run: cargo wix --target aarch64-pc-windows-msvc --nocapture
+
+      - name: Stage ARM64 executable
+        run: Copy-Item target/aarch64-pc-windows-msvc/release/lazywslc.exe lazywslc-arm64.exe
 
       - name: Get version
         id: version
@@ -39,5 +50,6 @@ jobs:
           name: ${{ steps.version.outputs.VERSION }}
           files: |
             target/release/lazywslc.exe
+            lazywslc-arm64.exe
             target/wix/*.msi
           generate_release_notes: true
