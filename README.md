@@ -4,6 +4,12 @@ A [**lazydocker-inspired**](https://github.com/jesseduffield/lazydocker) TUI das
 
 ![Featured Image](./docs/hero_image.png)
 
+## Install
+
+```powershell
+winget install crloewen.lazywslc
+```
+
 ## Features
 
 - Three-panel layout for Containers, Images, and Volumes
@@ -12,17 +18,7 @@ A [**lazydocker-inspired**](https://github.com/jesseduffield/lazydocker) TUI das
 - Mouse and keyboard support
 - Context actions (start/stop/kill/remove/prune)
 - Auto-refresh
-
-## Install
-
-With [WinGet](https://learn.microsoft.com/windows/package-manager/):
-
-```powershell
-winget install crloewen.lazywslc
-```
-
-Or grab the latest `.msi` or `.exe` from the [Releases](https://github.com/craigloewen-msft/lazywslc/releases) page.
-
+- 
 ## Contribute
 
 Feel free to fork and open PRs!
