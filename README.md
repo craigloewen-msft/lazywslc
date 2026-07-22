@@ -10,6 +10,12 @@ A [**lazydocker-inspired**](https://github.com/jesseduffield/lazydocker) TUI das
 winget install crloewen.lazywslc
 ```
 
+Start the terminal UI
+
+```powershell
+lazywslc
+```
+
 ## Features
 
 - Three-panel layout for Containers, Images, and Volumes
@@ -18,7 +24,7 @@ winget install crloewen.lazywslc
 - Mouse and keyboard support
 - Context actions (start/stop/kill/remove/prune)
 - Auto-refresh
-- 
+
 ## Contribute
 
 Feel free to fork and open PRs!
