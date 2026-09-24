@@ -1,35 +1,42 @@
-use anyhow::Result;
 use super::client::{run_wslc, run_wslc_allow_failure};
 use super::types::*;
+use anyhow::{Context, Result};
+use serde::de::DeserializeOwned;
 
 pub async fn list_containers() -> Result<Vec<Container>> {
     let output = run_wslc(&["list", "--all", "--format", "json"]).await?;
-    let trimmed = output.trim();
-    if trimmed.is_empty() || trimmed == "[]" {
-        return Ok(Vec::new());
-    }
-    let containers: Vec<Container> = serde_json::from_str(trimmed)?;
-    Ok(containers)
+    parse_json_records(&output).context("Failed to parse container list")
 }
 
 pub async fn list_images() -> Result<Vec<Image>> {
     let output = run_wslc(&["images", "--format", "json"]).await?;
-    let trimmed = output.trim();
-    if trimmed.is_empty() || trimmed == "[]" {
-        return Ok(Vec::new());
-    }
-    let images: Vec<Image> = serde_json::from_str(trimmed)?;
-    Ok(images)
+    parse_json_records(&output).context("Failed to parse image list")
 }
 
 pub async fn list_volumes() -> Result<Vec<Volume>> {
     let output = run_wslc(&["volume", "list", "--format", "json"]).await?;
+    parse_json_records(&output).context("Failed to parse volume list")
+}
+
+fn parse_json_records<T: DeserializeOwned>(output: &str) -> Result<Vec<T>> {
     let trimmed = output.trim();
     if trimmed.is_empty() || trimmed == "[]" {
         return Ok(Vec::new());
     }
-    let volumes: Vec<Volume> = serde_json::from_str(trimmed)?;
-    Ok(volumes)
+
+    if trimmed.starts_with('[') {
+        return serde_json::from_str(trimmed).context("invalid JSON array");
+    }
+
+    trimmed
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .enumerate()
+        .map(|(index, line)| {
+            serde_json::from_str(line)
+                .with_context(|| format!("invalid JSON object on line {}", index + 1))
+        })
+        .collect()
 }
 
 pub async fn inspect_object(id: &str) -> Result<String> {
@@ -86,4 +93,26 @@ pub async fn prune_containers(stopped_ids: &[String]) -> Result<usize> {
         }
     }
     Ok(removed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_json_array_output() {
+        let output = r#"[{"Driver":"guest","Name":"one"}]"#;
+        let volumes: Vec<Volume> = parse_json_records(output).unwrap();
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0].name, "one");
+    }
+
+    #[test]
+    fn parses_newline_delimited_json_output() {
+        let output = "{\"Driver\":\"guest\",\"Name\":\"one\"}\n\
+                      {\"Driver\":\"guest\",\"Name\":\"two\"}\n";
+        let volumes: Vec<Volume> = parse_json_records(output).unwrap();
+        assert_eq!(volumes.len(), 2);
+        assert_eq!(volumes[1].name, "two");
+    }
 }

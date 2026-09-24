@@ -25,9 +25,10 @@ const REFRESH_INTERVAL: u8 = 4; // every 4 ticks × 250ms = ~1 second
 /// Messages sent from background tasks back to the main event loop.
 enum BgMessage {
     DataRefreshed {
-        containers: Vec<wslc::types::Container>,
-        images: Vec<wslc::types::Image>,
-        volumes: Vec<wslc::types::Volume>,
+        containers: Option<Vec<wslc::types::Container>>,
+        images: Option<Vec<wslc::types::Image>>,
+        volumes: Option<Vec<wslc::types::Volume>>,
+        errors: Vec<String>,
     },
     StatsLoaded {
         container_id: String,
@@ -746,10 +747,21 @@ fn spawn_refresh(tx: mpsc::UnboundedSender<BgMessage>) {
             wslc::commands::list_images(),
             wslc::commands::list_volumes(),
         );
+        let mut errors = Vec::new();
+        let containers = containers
+            .map_err(|error| errors.push(format!("containers: {error:#}")))
+            .ok();
+        let images = images
+            .map_err(|error| errors.push(format!("images: {error:#}")))
+            .ok();
+        let volumes = volumes
+            .map_err(|error| errors.push(format!("volumes: {error:#}")))
+            .ok();
         let _ = tx.send(BgMessage::DataRefreshed {
-            containers: containers.unwrap_or_default(),
-            images: images.unwrap_or_default(),
-            volumes: volumes.unwrap_or_default(),
+            containers,
+            images,
+            volumes,
+            errors,
         });
     });
 }
@@ -778,18 +790,25 @@ fn spawn_logs(tx: mpsc::UnboundedSender<BgMessage>, container_id: String) {
 
 fn handle_bg_message(app: &mut App, msg: BgMessage) {
     match msg {
-        BgMessage::DataRefreshed { containers, images, volumes } => {
-            app.containers = containers;
-            let mut imgs = images;
-            imgs.sort_by(|a, b| a.display_name().cmp(&b.display_name()));
-            app.images = imgs;
-            let mut vols = volumes;
-            vols.sort_by(|a, b| a.name.cmp(&b.name));
-            app.volumes = vols;
+        BgMessage::DataRefreshed { containers, images, volumes, errors } => {
+            if let Some(containers) = containers {
+                app.containers = containers;
+            }
+            if let Some(mut images) = images {
+                images.sort_by(|a, b| a.display_name().cmp(&b.display_name()));
+                app.images = images;
+            }
+            if let Some(mut volumes) = volumes {
+                volumes.sort_by(|a, b| a.name.cmp(&b.name));
+                app.volumes = volumes;
+            }
             app.clamp_indices();
             app.loading = false;
             // Hide splash screen now that we have data
             app.show_splash = false;
+            if !errors.is_empty() {
+                app.set_flash(format!("Refresh failed: {}", errors.join("; ")));
+            }
             // Note: We don't load inspect here to keep message handler fast.
             // It will be loaded on-demand when user navigates.
         }

@@ -43,10 +43,15 @@ fn container_info(app: &App) -> Vec<Line<'static>> {
 
     if !c.ports.is_empty() {
         let ports_str: Vec<String> = c.ports.iter().map(|p| {
-            format!("{}:{}/{}",
-                p.host_port.map(|v| v.to_string()).unwrap_or_default(),
-                p.container_port.map(|v| v.to_string()).unwrap_or_default(),
-                p.protocol.as_deref().unwrap_or("tcp"))
+            let container_port = p.container_port.map(|v| v.to_string()).unwrap_or_default();
+            let protocol = p.protocol.as_deref().unwrap_or("tcp");
+            match (p.binding_address.as_str(), p.host_port) {
+                (address, Some(host_port)) if !address.is_empty() => {
+                    format!("{}:{}->{}/{}", address, host_port, container_port, protocol)
+                }
+                (_, Some(host_port)) => format!("{}->{}/{}", host_port, container_port, protocol),
+                _ => format!("{}/{}", container_port, protocol),
+            }
         }).collect();
         lines.push(info_line("  Ports", &ports_str.join(", ")));
     } else {
