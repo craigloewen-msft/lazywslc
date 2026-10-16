@@ -7,6 +7,7 @@ use std::io;
 use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
+    cursor::{Hide, Show},
     event::{KeyCode, KeyModifiers, MouseEventKind, MouseButton, EnableMouseCapture, DisableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -81,6 +82,14 @@ async fn run_app(
         // Drain background results (non-blocking)
         while let Ok(msg) = bg_rx.try_recv() {
             handle_bg_message(app, msg);
+        }
+
+        // The interactive exec shell temporarily owns the terminal outside
+        // Ratatui's rendering pipeline. Invalidate Ratatui's previous-frame
+        // cache so the entire TUI is repainted after returning.
+        if app.force_full_redraw {
+            terminal.clear()?;
+            app.force_full_redraw = false;
         }
 
         // Draw
@@ -257,6 +266,11 @@ async fn handle_normal_key(
                         }
                     }
                 }
+            }
+        }
+        KeyCode::Char('E') => {
+            if app.active_section == ResourceSection::Containers {
+                exec_shell_for_selected(app, bg_tx);
             }
         }
         KeyCode::Char('S') => {
@@ -489,6 +503,9 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char, bg_tx: &mpsc::Unboun
                 }
             }
         }
+        'E' => {
+            exec_shell_for_selected(app, bg_tx);
+        }
         'S' => {
             if let Some(c) = app.selected_container() {
                 let id = c.id.clone();
@@ -563,6 +580,58 @@ async fn execute_action_hotkey(app: &mut App, hotkey: char, bg_tx: &mpsc::Unboun
     }
 }
 
+fn exec_shell_for_selected(app: &mut App, bg_tx: &mpsc::UnboundedSender<BgMessage>) {
+    let Some(container) = app.selected_container() else {
+        return;
+    };
+
+    if !container.is_running() {
+        app.set_flash("Container is not running".into());
+        return;
+    }
+
+    let id = container.id.clone();
+
+    let result = run_interactive_shell(&id);
+
+    // Leaving/entering the alternate screen changes the physical terminal
+    // without updating Ratatui's cached previous buffer.
+    app.force_full_redraw = true;
+
+    match result {
+        Ok(_) => app.set_flash("Shell session ended".into()),
+        Err(e) => app.set_flash(format!("Exec shell error: {}", e)),
+    }
+
+    app.loading = true;
+    spawn_refresh(bg_tx.clone());
+}
+
+fn run_interactive_shell(id: &str) -> Result<()> {
+    disable_raw_mode()?;
+
+    let mut stdout = io::stdout();
+    execute!(stdout, LeaveAlternateScreen, DisableMouseCapture, Show)?;
+
+    let command_result = wslc::commands::exec_shell(id);
+
+    // Return to the TUI immediately when the interactive shell exits.
+    // `wslc exec -i -t` owns the console while it runs and may leave stdin in a
+    // mode where a subsequent std::io::stdin().read_line() does not reliably
+    // receive Enter on Windows. Re-enabling crossterm raw mode restores the TUI
+    // console state without requiring an extra keypress.
+    let resume_result = (|| -> Result<()> {
+        enable_raw_mode()?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        Ok(())
+    })();
+
+    match (command_result, resume_result) {
+        (Err(err), _) => Err(err),
+        (Ok(_), Err(err)) => Err(err),
+        (Ok(_), Ok(_)) => Ok(()),
+    }
+}
 async fn handle_pull_input_key(app: &mut App, code: KeyCode, bg_tx: &mpsc::UnboundedSender<BgMessage>) {
     match code {
         KeyCode::Esc => {

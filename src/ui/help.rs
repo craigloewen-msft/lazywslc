@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use crate::ui::layout::centered_rect;
 
 pub fn draw_help(f: &mut Frame, area: Rect) {
-    let popup = centered_rect(70, 22, area);
+    let popup = centered_rect(70, 23, area);
 
     let lines = vec![
         Line::from(""),
@@ -21,6 +21,7 @@ pub fn draw_help(f: &mut Frame, area: Rect) {
         Line::from(Span::styled("  Actions", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
         help_line("  Space", "Open action menu"),
         help_line("  s", "Start container"),
+        help_line("  E", "Exec shell in running container"),
         help_line("  S", "Stop container"),
         help_line("  K", "Kill container"),
         help_line("  x", "Remove selected item"),

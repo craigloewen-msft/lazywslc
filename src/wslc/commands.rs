@@ -1,4 +1,4 @@
-use super::client::{run_wslc, run_wslc_allow_failure};
+use super::client::{exec_shell as exec_shell_client, run_wslc, run_wslc_allow_failure, run_wslc_remote_aware};
 use super::types::*;
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
@@ -53,7 +53,11 @@ pub async fn container_stats(id: &str) -> Result<String> {
 }
 
 pub async fn start_container(id: &str) -> Result<String> {
-    run_wslc(&["start", id]).await
+    run_wslc_remote_aware(&["start", id]).await
+}
+
+pub fn exec_shell(id: &str) -> Result<()> {
+    exec_shell_client(id)
 }
 
 pub async fn stop_container(id: &str) -> Result<String> {
@@ -73,7 +77,7 @@ pub async fn remove_image(id: &str) -> Result<String> {
 }
 
 pub async fn remove_volume(name: &str) -> Result<String> {
-    run_wslc(&["volume", "remove", name]).await
+    run_wslc_remote_aware(&["volume", "remove", name]).await
 }
 
 pub async fn pull_image(name: &str) -> Result<String> {

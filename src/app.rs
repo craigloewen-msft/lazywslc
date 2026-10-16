@@ -113,6 +113,9 @@ pub struct App {
 
     // Loading
     pub loading: bool,
+
+    // Rendering
+    pub force_full_redraw: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +162,7 @@ impl App {
             show_splash: true,
             splash_ticks: 0,
             loading: false,
+            force_full_redraw: false,
         }
     }
 
@@ -405,8 +409,9 @@ impl App {
 
         match self.active_section {
             ResourceSection::Containers => {
-                if let Some(c) = self.selected_container() {
-                    if c.is_running() {
+                if let Some(is_running) = self.selected_container().map(|c| c.is_running()) {
+                    if is_running {
+                        self.action_menu_items.push(ActionMenuItem { label: "Exec Shell".into(), hotkey: 'E' });
                         self.action_menu_items.push(ActionMenuItem { label: "Stop".into(), hotkey: 'S' });
                         self.action_menu_items.push(ActionMenuItem { label: "Kill".into(), hotkey: 'K' });
                     } else {
